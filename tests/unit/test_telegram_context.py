@@ -1,5 +1,6 @@
 import pytest
 
+from orchestrator.domain import JobStatus
 from orchestrator.telegram.gateway import InboundMessage, TelegramGateway
 
 
@@ -35,6 +36,56 @@ async def test_natural_message_creates_global_job(database, jobs, config, monkey
     assert reply is None
     assert created == ["GLOBAL_QUESTION"]
     assert reactions == [("7", "message-1", "👀")]
+
+
+@pytest.mark.asyncio
+async def test_confirmation_without_reply_metadata_reuses_pending_job(database, jobs, seeded_config, monkeypatch) -> None:
+    monkeypatch.setenv("TELEGRAM_ALLOWED_USER_IDS", "42")
+    monkeypatch.setenv("TELEGRAM_ALLOWED_CHAT_IDS", "7")
+    pending = jobs.create_job(
+        kind="implementation",
+        idempotency_key="pending-voice-confirmation",
+        project_id="project",
+        request_text="Update the README",
+        status=JobStatus.AWAITING_INPUT,
+    )
+    with database.session() as session:
+        from orchestrator.database.models import TelegramOutboundMessage
+
+        session.add(
+            TelegramOutboundMessage(
+                chat_id="7",
+                message_id="confirmation-1",
+                message_type="voice_confirmation",
+                text="Entendí...",
+                project_id="project",
+                job_id=pending.id,
+            )
+        )
+        session.commit()
+
+    gateway = TelegramGateway(seeded_config, database, jobs)
+    reply = await gateway.handle(InboundMessage("confirmation-audio", "7", "42", "message-2", "Exacto, eso mismo.", voice_file_id="voice-2"))
+
+    assert reply is not None
+    assert jobs.get(pending.id).status == JobStatus.QUEUED.value
+
+
+@pytest.mark.asyncio
+async def test_unknown_message_does_not_create_worker_job(database, jobs, config, monkeypatch) -> None:
+    monkeypatch.setenv("TELEGRAM_ALLOWED_USER_IDS", "42")
+    monkeypatch.setenv("TELEGRAM_ALLOWED_CHAT_IDS", "7")
+    created: list[str] = []
+
+    async def creator(intent: str, project_id: str | None, repository_id: str | None, text: str, update_id: str) -> str:
+        created.append(intent)
+        return "job-unknown"
+
+    gateway = TelegramGateway(config, database, jobs, job_creator=creator)
+    reply = await gateway.handle(InboundMessage("unknown-1", "7", "42", "message-3", "Exacto, eso mismo."))
+
+    assert reply is not None
+    assert created == []
 
 
 @pytest.mark.asyncio

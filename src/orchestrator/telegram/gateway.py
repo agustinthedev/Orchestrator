@@ -13,6 +13,7 @@ from orchestrator.config.models import AppConfig
 from orchestrator.database.engine import Database
 from orchestrator.database.models import (
     ConversationThread,
+    Job,
     TelegramInboundMessage,
     TelegramOutboundMessage,
     utcnow,
@@ -109,6 +110,33 @@ class TelegramGateway:
                 message.head_sha,
             )
 
+    def resolve_pending_input_context(self, chat_id: str) -> ReplyContext | None:
+        """Resolve the latest pending confirmation when Telegram omitted reply metadata."""
+        with self.database.session() as session:
+            message = session.scalar(
+                select(TelegramOutboundMessage)
+                .where(
+                    TelegramOutboundMessage.chat_id == chat_id,
+                    TelegramOutboundMessage.message_type.in_(["voice_confirmation", "input_request"]),
+                )
+                .order_by(TelegramOutboundMessage.created_at.desc())
+            )
+            if not message or not message.job_id:
+                return None
+            job = session.get(Job, message.job_id)
+            if not job or job.status != JobStatus.AWAITING_INPUT.value:
+                return None
+            return ReplyContext(
+                message.job_id,
+                message.project_id,
+                message.repository_id,
+                message.interaction_id,
+                message.thread_id,
+                message.execution_phase,
+                message.branch_name,
+                message.head_sha,
+            )
+
     async def handle(self, message: InboundMessage) -> str | None:
         if not self.authorized(message.user_id, message.chat_id):
             logger.warning("Rejected unauthorized Telegram message", extra={"event_type": "TELEGRAM_REJECTED"})
@@ -119,6 +147,8 @@ class TelegramGateway:
             text = await self.transcribe_voice(message.voice_file_id)
         if not text:
             return await self.send("No pude interpretar ese mensaje.", chat_id=message.chat_id, message_type="clarification")
+        if not context and self._is_pending_input_response(text):
+            context = self.resolve_pending_input_context(message.chat_id)
         self._persist_inbound(message, text)
         state = None
         current_job = None
@@ -128,7 +158,7 @@ class TelegramGateway:
         intent = classify_intent(text, state=state, has_reply_context=context is not None)
         self._set_intent(message.update_id, intent.value)
         if context and context.job_id and state == JobStatus.AWAITING_INPUT.value:
-            if re.search(r"\b(cancel|stop|abort)\b", text.casefold()):
+            if re.search(r"\b(cancel|cancelar|cancelo|stop|abort|no|rechazo)\b", text.casefold()):
                 self.jobs.transition(context.job_id, JobStatus.CANCELLED, {"reason": "user_cancelled_input"})
                 return await self.send("Cancelé el job pendiente.", chat_id=message.chat_id, job_id=context.job_id, message_type="job_cancelled")
             self.jobs.add_input(context.job_id, text, telegram_user_id=message.user_id, telegram_message_id=message.message_id)
@@ -246,6 +276,12 @@ class TelegramGateway:
             Intent.TEST_REQUEST,
         } and not project_id:
             return await self.send("¿Qué proyecto lógico debo usar? Responde con su ID configurado.", chat_id=message.chat_id, message_type="clarification")
+        if intent == Intent.UNKNOWN:
+            return await self.send(
+                "No pude identificar una solicitud concreta. Indica qué quieres analizar, cambiar o corregir.",
+                chat_id=message.chat_id,
+                message_type="clarification",
+            )
         if self.job_creator:
             job_id = await self.job_creator(
                 intent.value,
@@ -354,6 +390,15 @@ class TelegramGateway:
             if re.search(rf"\b{re.escape(project.id)}\b", text, re.IGNORECASE):
                 return project.id
         return None
+
+    @staticmethod
+    def _is_pending_input_response(text: str) -> bool:
+        return bool(
+            re.search(
+                r"\b(confirm|confirmed|confirmar|confirmo|cancel|cancelar|cancelo|yes|si|s\u00ed|ok|okay|dale|adelante|exacto|rechazo|no)\b",
+                text.casefold(),
+            )
+        )
 
     def build_application(self) -> Any:
         """Build the optional python-telegram-bot application for long polling."""
