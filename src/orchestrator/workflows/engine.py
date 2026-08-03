@@ -357,6 +357,9 @@ class OrchestratorEngine:
     async def _validate(self, job: Job, project: ProjectConfig, worktree_path: Path) -> list[Any]:
         self.jobs.transition(job.id, JobStatus.VALIDATING, {})
         cwd = self.config.resolve_project_path(project.id, worktree_path)
+        repository = self.config.repository(project.repository)
+        base_project_path = (repository.local_path / project.working_directory).resolve()
+        self.validator.link_node_modules(cwd, base_project_path / "node_modules")
         results = [self.validator.run(command, cwd) for command in project.validation.commands]
         with self.database.session() as session:
             for result in results:
