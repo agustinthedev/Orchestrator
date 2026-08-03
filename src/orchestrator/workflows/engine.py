@@ -220,6 +220,8 @@ class OrchestratorEngine:
             return
         target_job_id = str(job.context.get("target_job_id", ""))
         worktree: Any = self._worktree_for(target_job_id or job.id)
+        has_existing_worktree = worktree is not None
+        is_revision = bool(job.context.get("revision_request") and has_existing_worktree)
         if not worktree:
             self.jobs.transition(job.id, JobStatus.PREPARING_WORKTREE, {})
             proposal_id = str(job.context.get("proposal_id", ""))
@@ -235,8 +237,12 @@ class OrchestratorEngine:
                 session.commit()
             worktree = info
         worktree_path = Path(worktree.path)
-        self.jobs.transition(job.id, JobStatus.IMPLEMENTING_REVISION if job.context.get("revision_request") else JobStatus.IMPLEMENTING, {})
-        prompt = self._prompt("revision" if job.context.get("revision_request") else "implementation", self._scope_context(project, repository, job, worktree.base_sha) + f"\nWorktree: {worktree_path}\nRevision: {job.context.get('revision_request', '')}")
+        self.jobs.transition(
+            job.id,
+            JobStatus.IMPLEMENTING_REVISION if is_revision else JobStatus.IMPLEMENTING,
+            {},
+        )
+        prompt = self._prompt("revision" if is_revision else "implementation", self._scope_context(project, repository, job, worktree.base_sha) + f"\nWorktree: {worktree_path}\nRevision: {job.context.get('revision_request', '') if is_revision else ''}")
         result = await self.codex.run(cwd=self.config.resolve_project_path(project.id, worktree_path), prompt=prompt, model=self.codex.choose_model(project, task="implementation"), mode="workspace_write", profile_path=project.codex.profile_path)
         self._record_codex(job, result, "implementation")
         if await self._request_input_if_needed(job, result):

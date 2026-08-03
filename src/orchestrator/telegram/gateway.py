@@ -190,17 +190,26 @@ class TelegramGateway:
                 has_reply_context=context is not None,
             )
         intent = classification.intent
+        if intent == Intent.REQUEST_REVISION and not (current_job and current_job.worktree_path):
+            intent = Intent.FEATURE_REQUEST
+            classification = classification.model_copy(
+                update={"intent": intent, "reason": "no_revision_worktree"}
+            )
         self._set_intent(message.update_id, intent.value)
         if context and context.job_id and state == JobStatus.AWAITING_INPUT.value:
             if re.search(r"\b(cancel|cancelar|cancelo|stop|abort|no|rechazo)\b", text.casefold()):
                 self.jobs.transition(context.job_id, JobStatus.CANCELLED, {"reason": "user_cancelled_input"})
-                return await self.send("Cancelé el job pendiente.", chat_id=message.chat_id, job_id=context.job_id, message_type="job_cancelled")
+                response = await self.send("Cancelé el job pendiente.", chat_id=message.chat_id, job_id=context.job_id, message_type="job_cancelled")
+                await self._react_to_message(message, job_id=context.job_id)
+                return response
             self.jobs.add_input(context.job_id, text, telegram_user_id=message.user_id, telegram_message_id=message.message_id)
             answers = list(current_job.context.get("user_answers", [])) if current_job else []
             self.jobs.update_context(context.job_id, {"user_answers": [*answers, text], "voice_confirmation_pending": False})
             self.jobs.transition(context.job_id, JobStatus.INPUT_RECEIVED, {"telegram_user_id": message.user_id})
             self.jobs.transition(context.job_id, JobStatus.QUEUED, {"reason": "user_input_received"})
-            return await self.send("Respuesta registrada; reanudaré el job con este contexto.", chat_id=message.chat_id, job_id=context.job_id, message_type="input_received")
+            response = await self.send("Respuesta registrada; reanudaré el job con este contexto.", chat_id=message.chat_id, job_id=context.job_id, message_type="input_received")
+            await self._react_to_message(message, job_id=context.job_id)
+            return response
         if message.voice_file_id and intent in {
             Intent.FEATURE_REQUEST,
             Intent.FIX_REQUEST,
@@ -210,9 +219,15 @@ class TelegramGateway:
         }:
             project_id = self._resolve_project(context, classification.project_id, text)
             repository_id = context.repository_id if context else None
-            is_revision = intent == Intent.REQUEST_REVISION and context and context.job_id
+            is_revision = bool(intent == Intent.REQUEST_REVISION and context and context.job_id)
             pending = self.jobs.create_job(
-                kind="implementation" if is_revision else intent.value,
+                kind="implementation" if intent in {
+                    Intent.FEATURE_REQUEST,
+                    Intent.FIX_REQUEST,
+                    Intent.REFACTOR_REQUEST,
+                    Intent.TEST_REQUEST,
+                    Intent.REQUEST_REVISION,
+                } else intent.value,
                 idempotency_key=f"voice-confirmation:{message.update_id}",
                 project_id=project_id,
                 repository_id=repository_id,
@@ -225,7 +240,7 @@ class TelegramGateway:
                 },
                 status=JobStatus.AWAITING_INPUT,
             )
-            return await self.send(
+            response = await self.send(
                 f"<b>Entendí:</b>\n\n<blockquote>{escape(text)}</blockquote>\n\n<b>Esto puede modificar archivos.</b>\nUsa un botón o responde a este mensaje para confirmar o cancelar.",
                 chat_id=message.chat_id,
                 project_id=project_id,
@@ -238,6 +253,8 @@ class TelegramGateway:
                     [("Confirmar", f"confirm_job:{pending.id}"), ("Cancelar", f"cancel_job:{pending.id}")]
                 ],
             )
+            await self._react_to_message(message, job_id=pending.id)
+            return response
         if intent == Intent.APPROVE_PUSH and context and context.job_id and context.head_sha:
             try:
                 self.jobs.approve_push(context.job_id, context.head_sha, message.user_id, message.message_id)
@@ -329,16 +346,21 @@ class TelegramGateway:
                 message.update_id,
             )
             if self.reactor:
-                try:
-                    await self.reactor(message.chat_id, message.message_id, ACK_REACTION)
-                except Exception:
-                    logger.exception(
-                        "Could not react to Telegram message",
-                        extra={"event_type": "TELEGRAM_REACTION_FAILURE", "job_id": job_id},
-                    )
+                await self._react_to_message(message, job_id=job_id)
                 return None
             return await self.send("Recibido. Creé un job persistente para procesarlo.", chat_id=message.chat_id, job_id=job_id, project_id=project_id, message_type="job_created")
         return await self.send("Recibido, pero el worker todavía no está disponible.", chat_id=message.chat_id, message_type="status")
+
+    async def _react_to_message(self, message: InboundMessage, *, job_id: str | None = None) -> None:
+        if not self.reactor:
+            return
+        try:
+            await self.reactor(message.chat_id, message.message_id, ACK_REACTION)
+        except Exception:
+            logger.exception(
+                "Could not react to Telegram message",
+                extra={"event_type": "TELEGRAM_REACTION_FAILURE", "job_id": job_id},
+            )
 
     async def handle_callback(self, callback_id: str, data: str, *, user_id: str, chat_id: str, message_id: str) -> str | None:
         if data.startswith("confirm_job:"):
