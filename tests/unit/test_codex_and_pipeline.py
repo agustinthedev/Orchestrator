@@ -13,9 +13,10 @@ def test_structured_codex_output_is_validated() -> None:
 def test_model_routing_rejects_unconfigured_models() -> None:
     runner = CodexRunner(CodexSettings(default_model=ModelSpec(name="luna", reasoning_effort="high"), allowed_models=["luna"]))
     assert runner.choose_model().name == "luna"
+    assert runner.choose_model(task="daily_code_review").reasoning_effort == "high"
+    assert runner.choose_model(task="implementation").reasoning_effort == "extra_high"
 
 
 def test_pipeline_failure_classification_uses_evidence() -> None:
     assert classify_failure("pytest AssertionError: expected 2 got 1") == FailureClass.TEST
     assert classify_failure("401 unauthorized credential missing") == FailureClass.CREDENTIALS
-

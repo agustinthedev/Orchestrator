@@ -61,7 +61,7 @@ class CodexRunner:
 
     def choose_model(self, project: ProjectConfig | None = None, *, task: str = "default") -> ModelSpec:
         name = project.codex.model_override if project and project.codex.model_override else None
-        effort = project.codex.reasoning_effort_override if project and project.codex.reasoning_effort_override else None
+        effort = project.codex.reasoning_effort_override if project and project.codex.reasoning_effort_override else self.settings.task_reasoning_effort.get(task)
         spec = ModelSpec(
             name=name or self.settings.default_model.name,
             reasoning_effort=effort or self.settings.default_model.reasoning_effort,
@@ -148,4 +148,3 @@ class CodexRunner:
             except (json.JSONDecodeError, ValidationError):
                 continue
         return None
-

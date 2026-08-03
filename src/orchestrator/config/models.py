@@ -70,6 +70,17 @@ class CodexSettings(BaseModel):
         default_factory=lambda: ["low", "medium", "high", "extra_high"]
     )
     extra_args: list[str] = Field(default_factory=list)
+    task_reasoning_effort: dict[str, str] = Field(
+        default_factory=lambda: {
+            "classification": "low",
+            "global_question": "medium",
+            "project_question": "medium",
+            "daily_code_review": "high",
+            "pipeline_review": "high",
+            "implementation": "extra_high",
+            "diff_summarization": "medium",
+        }
+    )
 
 
 class GitSettings(BaseModel):

@@ -37,6 +37,14 @@ codex:
     - configurable-luna-model-name
     - configurable-terra-model-name
   allowed_reasoning_efforts: [low, medium, high, extra_high]
+  task_reasoning_effort:
+    classification: low
+    global_question: medium
+    project_question: medium
+    daily_code_review: high
+    pipeline_review: high
+    implementation: extra_high
+    diff_summarization: medium
 
 git:
   allow_force_push: false
@@ -48,4 +56,3 @@ pull_requests:
   always_draft: true
   allow_auto_merge: false
   allow_auto_complete: false
-
