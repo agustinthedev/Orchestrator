@@ -218,7 +218,7 @@ class OrchestratorEngine:
         self._ensure_write_allowed(project)
         if not await self._revalidate_stale_proposal(job, project, repository):
             return
-        target_job_id = str(job.context.get("target_job_id", ""))
+        target_job_id = self._target_job_id(job.context)
         worktree: Any = self._worktree_for(target_job_id or job.id)
         has_existing_worktree = worktree is not None
         is_revision = bool(job.context.get("revision_request") and has_existing_worktree)
@@ -275,7 +275,7 @@ class OrchestratorEngine:
         await self.notifier.send(self._push_manifest(project, repository, job, worktree, commits, changes, validation_results), chat_id=self._conversation_chat_id(), message_type="push_approval", project_id=project.id, repository_id=repository.id, job_id=job.id, phase="awaiting_push_approval", branch_name=branch_name, head_sha=head, thread_id=f"THREAD-{job.id}-PUSH")
 
     async def change_question(self, job: Job) -> None:
-        target_id = str(job.context.get("target_job_id", ""))
+        target_id = self._target_job_id(job.context)
         target = self.jobs.get(target_id)
         if not target:
             raise ValueError("Target change job no longer exists")
@@ -312,7 +312,7 @@ class OrchestratorEngine:
 
     async def push(self, job: Job) -> None:
         project, repository = self._project_repository(job)
-        target_job_id = str(job.context.get("target_job_id", ""))
+        target_job_id = self._target_job_id(job.context)
         worktree = self._worktree_for(target_job_id or job.id)
         if not worktree:
             raise RuntimeError("No worktree associated with push job")
@@ -532,6 +532,11 @@ The branch has not been pushed. Reply with an explicit approval such as “Push 
     def _worktree_for(self, job_id: str) -> Worktree | None:
         with self.database.session() as session:
             return session.scalar(select(Worktree).where(Worktree.job_id == job_id))
+
+    @staticmethod
+    def _target_job_id(context: dict[str, Any]) -> str:
+        value = context.get("target_job_id")
+        return str(value) if value else ""
 
     def _approved_push(self, job_id: str) -> Any | None:
         from orchestrator.database.models import PushApproval
