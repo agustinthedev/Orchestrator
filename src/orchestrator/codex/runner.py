@@ -84,7 +84,9 @@ class CodexRunner:
         command.extend(self.settings.extra_args)
         if resume_session:
             command.extend(["--resume", resume_session])
-        command.append(prompt)
+        # Pass the prompt through stdin. On Windows, passing multiline prompts as
+        # an argument to codex.cmd truncates them at the first newline.
+        command.append("-")
         return command
 
     async def run(
@@ -111,12 +113,14 @@ class CodexRunner:
             *command,
             cwd=str(cwd),
             env=process_env,
-            stdin=subprocess.DEVNULL,
+            stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
         try:
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(process.communicate(), timeout=timeout_seconds)
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                process.communicate(prompt.encode("utf-8")), timeout=timeout_seconds
+            )
         except TimeoutError:
             process.kill()
             await process.wait()

@@ -35,6 +35,15 @@ def test_structured_codex_output_is_validated() -> None:
     assert parsed.answer == "safe"
 
 
+def test_codex_command_reads_multiline_prompt_from_stdin() -> None:
+    runner = CodexRunner(CodexSettings())
+
+    command = runner.build_command(ModelSpec(name="configurable-luna-model-name"), mode="read_only", prompt="line one\nline two")
+
+    assert command[-1] == "-"
+    assert "line one\nline two" not in command
+
+
 def test_structured_codex_output_is_extracted_from_jsonl_agent_message() -> None:
     output = '{"type":"item.completed","item":{"type":"agent_message","text":"{\\"result_type\\":\\"answer\\",\\"answer\\":\\"safe\\"}"}}'
     parsed = CodexRunner.parse_structured_output(output)
