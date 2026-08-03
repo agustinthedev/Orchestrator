@@ -1,0 +1,17 @@
+repositories:
+  - id: automation-monorepo
+    display_name: Automation Monorepo
+    local_path: C:/repos/automation-monorepo
+    provider: azure_devops
+    default_branch: develop
+    remote:
+      name: origin
+    azure_devops:
+      organization: example-organization
+      project: ExampleProject
+      repository_id: ExampleRepository
+      pat_env: AZURE_DEVOPS_PAT
+    concurrency:
+      max_write_jobs: 1
+      max_read_jobs: 3
+

@@ -1,0 +1,28 @@
+projects:
+  - id: mobile-automation
+    display_name: Mobile Automation
+    repository: automation-monorepo
+    working_directory: projects/mobile
+    codex:
+      profile_path: C:/orchestrator/profiles/mobile-automation
+      enabled: true
+    scope:
+      allowed_read_paths: [projects/mobile, shared/framework, shared/test-utils]
+      allowed_write_paths: [projects/mobile, shared/framework/mobile]
+      forbidden_paths: [application, infrastructure, projects/desktop, .env]
+    validation:
+      commands:
+        - python -m ruff check projects/mobile
+        - python -m pytest projects/mobile/tests
+      required: true
+    pipelines:
+      nightly:
+        provider: azure_devops
+        pipeline_id: 42
+    permissions:
+      allow_read: true
+      allow_changes: true
+      allow_push: true
+      allow_pull_request: true
+      allow_merge: false
+
