@@ -34,7 +34,7 @@ class JobStatus(StrEnum):
 TERMINAL_STATES = {JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.EXPIRED}
 
 ALLOWED_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
-    JobStatus.CREATED: {JobStatus.QUEUED, JobStatus.CANCELLED, JobStatus.FAILED},
+    JobStatus.CREATED: {JobStatus.QUEUED, JobStatus.AWAITING_INPUT, JobStatus.CANCELLED, JobStatus.FAILED},
     JobStatus.QUEUED: {JobStatus.RUNNING, JobStatus.CANCELLED, JobStatus.EXPIRED},
     JobStatus.RUNNING: {
         JobStatus.AWAITING_INPUT,

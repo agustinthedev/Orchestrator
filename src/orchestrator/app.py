@@ -8,9 +8,10 @@ from typing import Any
 
 from orchestrator.codex.runner import CodexRunner
 from orchestrator.config import load_config
+from orchestrator.config.loader import configured_secret_names
 from orchestrator.config.models import AppConfig
 from orchestrator.database.engine import Database, create_database
-from orchestrator.database.models import Project, Repository
+from orchestrator.database.models import CredentialsMetadata, Project, Repository, utcnow
 from orchestrator.git.manager import GitManager
 from orchestrator.jobs.service import JobService
 from orchestrator.observability.logging import configure_logging, get_logger
@@ -30,6 +31,7 @@ class Application:
         self.config = config
         self.database: Database = create_database(config.database.url)
         self._persist_config()
+        self._persist_credential_metadata()
         self.jobs = JobService(self.database, approval_ttl_minutes=config.runtime.approvals_ttl_minutes)
         self.codex = CodexRunner(config.codex)
         self.git = GitManager(config.git, config.runtime.worktrees_root)
@@ -65,6 +67,17 @@ class Application:
                         setattr(project_record, key, value)
                 else:
                     session.add(Project(id=project_config.id, **project_values))
+            session.commit()
+
+    def _persist_credential_metadata(self) -> None:
+        with self.database.session() as session:
+            for name in configured_secret_names(self.config):
+                existing = session.query(CredentialsMetadata).filter(CredentialsMetadata.name == name).one_or_none()
+                if existing:
+                    existing.available = bool(os.getenv(name))
+                    existing.checked_at = utcnow()
+                else:
+                    session.add(CredentialsMetadata(name=name, environment_variable=name, available=bool(os.getenv(name))))
             session.commit()
 
     async def _create_message_job(self, intent: str, project_id: str | None, repository_id: str | None, text: str) -> str:
@@ -120,7 +133,7 @@ class Application:
 
         self.telegram.sender = sender
         try:
-            from telegram.ext import MessageHandler, filters
+            from telegram.ext import CallbackQueryHandler, MessageHandler, filters
         except ImportError as exc:
             raise RuntimeError("Install orchestrator[telegram] for Telegram support") from exc
 
@@ -142,6 +155,21 @@ class Application:
 
         self._telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_update))
         self._telegram_app.add_handler(MessageHandler(filters.VOICE, handle_update))
+
+        async def handle_callback(update: Any, _context: Any) -> None:
+            query = update.callback_query
+            if not query or not query.message or not query.from_user or not query.message.chat:
+                return
+            await query.answer()
+            await self.telegram.handle_callback(
+                str(query.id),
+                str(query.data),
+                user_id=str(query.from_user.id),
+                chat_id=str(query.message.chat.id),
+                message_id=str(query.message.message_id),
+            )
+
+        self._telegram_app.add_handler(CallbackQueryHandler(handle_callback))
         await self._telegram_app.initialize()
         await self._telegram_app.start()
         if self._telegram_app.updater:

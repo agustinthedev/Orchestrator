@@ -99,6 +99,8 @@ class OrchestratorEngine:
             profile_path=project.codex.profile_path,
         )
         self._record_codex(job, result, "daily_code_review")
+        if await self._request_input_if_needed(job, result):
+            return
         if result.exit_code != 0 or not result.structured:
             raise RuntimeError(f"Code review Codex run failed: {result.stderr[-1000:]}")
         created = self._persist_proposals(job, project, repository, base_sha, result.structured.proposals)
@@ -169,6 +171,8 @@ class OrchestratorEngine:
         prompt = self._prompt("global_question" if global_scope else "project_question", context)
         result = await self.codex.run(cwd=cwd, prompt=prompt, model=model, mode="read_only", profile_path=profile)
         self._record_codex(job, result, "global_question" if global_scope else "project_question")
+        if await self._request_input_if_needed(job, result):
+            return
         if result.exit_code != 0:
             raise RuntimeError(result.stderr[-1000:])
         answer = result.structured.answer if result.structured else result.stdout[-4000:]
@@ -178,6 +182,8 @@ class OrchestratorEngine:
     async def implementation(self, job: Job) -> None:
         project, repository = self._project_repository(job)
         self._ensure_write_allowed(project)
+        if not await self._revalidate_stale_proposal(job, project, repository):
+            return
         worktree: Any = self._worktree_for(job.id)
         if not worktree:
             self.jobs.transition(job.id, JobStatus.PREPARING_WORKTREE, {})
@@ -198,6 +204,8 @@ class OrchestratorEngine:
         prompt = self._prompt("revision" if job.context.get("revision_request") else "implementation", self._scope_context(project, repository, job, worktree.base_sha) + f"\nWorktree: {worktree_path}\nRevision: {job.context.get('revision_request', '')}")
         result = await self.codex.run(cwd=self.config.resolve_project_path(project.id, worktree_path), prompt=prompt, model=self.codex.choose_model(project, task="implementation"), mode="workspace_write", profile_path=project.codex.profile_path)
         self._record_codex(job, result, "implementation")
+        if await self._request_input_if_needed(job, result):
+            return
         if result.exit_code != 0:
             raise RuntimeError(result.stderr[-1500:])
         allowed, violations = self.git.enforce_scope(worktree_path, worktree.base_sha, project.scope)
@@ -295,6 +303,67 @@ class OrchestratorEngine:
                 session.add(ValidationRun(job_id=job.id, command=result.command, exit_code=result.exit_code, stdout_summary=result.stdout_summary, stderr_summary=result.stderr_summary, duration_seconds=result.duration_seconds, passed=result.passed, skipped=result.skipped, skip_reason=result.skip_reason))
             session.commit()
         return results
+
+    async def _revalidate_stale_proposal(self, job: Job, project: ProjectConfig, repository: RepositoryConfig) -> bool:
+        proposal_id = str(job.context.get("proposal_id", ""))
+        if not proposal_id:
+            return True
+        with self.database.session() as session:
+            proposal = session.get(Proposal, proposal_id)
+        if not proposal or not proposal.base_sha:
+            return True
+        current_base = self.git.base_sha(repository)
+        if current_base == proposal.base_sha:
+            return True
+        prompt = self._prompt(
+            "proposal_revalidation",
+            self._scope_context(project, repository, job, current_base)
+            + f"\nProposal base SHA: {proposal.base_sha}\nCurrent base SHA: {current_base}\nProposal: {proposal.description}",
+        )
+        result = await self.codex.run(
+            cwd=self.config.resolve_project_path(project.id),
+            prompt=prompt,
+            model=self.codex.choose_model(project, task="project_question"),
+            mode="read_only",
+            profile_path=project.codex.profile_path,
+        )
+        self._record_codex(job, result, "proposal_revalidation")
+        valid = bool(result.structured and result.structured.model_extra and result.structured.model_extra.get("valid", False))
+        if valid:
+            return True
+        self.jobs.transition(job.id, JobStatus.NEEDS_REVIEW, {"reason": "proposal_base_changed", "proposal_base_sha": proposal.base_sha, "current_base_sha": current_base})
+        await self.notifier.send(
+            f"La propuesta {proposal.id} quedó obsoleta porque cambió el base SHA. Se requiere revisión.",
+            chat_id=self._conversation_chat_id(),
+            message_type="proposal_stale",
+            project_id=project.id,
+            repository_id=repository.id,
+            job_id=job.id,
+        )
+        return False
+
+    async def _request_input_if_needed(self, job: Job, result: Any) -> bool:
+        structured = result.structured
+        if not structured or structured.result_type != "needs_input":
+            return False
+        questions = structured.questions or []
+        if not questions:
+            self.jobs.add_question(job.id, "free_text", "¿Qué información adicional debo usar?", "text")
+            questions_text = "¿Qué información adicional debo usar?"
+        else:
+            for question in questions:
+                self.jobs.add_question(job.id, question.id, question.question, question.type, question.options, question.required)
+            questions_text = "\n".join(f"{question.id}: {question.question}" for question in questions)
+        self.jobs.transition(job.id, JobStatus.AWAITING_INPUT, {"question_count": len(questions) or 1})
+        await self.notifier.send(
+            f"Necesito información adicional antes de continuar:\n{questions_text}",
+            chat_id=self._conversation_chat_id(),
+            message_type="input_request",
+            job_id=job.id,
+            execution_phase="awaiting_input",
+            interaction_id=str(uuid.uuid4()),
+        )
+        return True
 
     def provider_for(self, repository: RepositoryConfig) -> SourceControlProvider | None:
         if repository.provider == "github" and repository.github:

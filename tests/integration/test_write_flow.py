@@ -6,14 +6,19 @@ from pathlib import Path
 import pytest
 
 from orchestrator.codex.runner import CodexResult, StructuredCodexResult
-from orchestrator.config.models import AppConfig, ProjectConfig, RepositoryConfig, ScopeConfig, ValidationConfig
+from orchestrator.config.models import (
+    AppConfig,
+    ProjectConfig,
+    RepositoryConfig,
+    ScopeConfig,
+    ValidationConfig,
+)
 from orchestrator.database.models import Project, Repository
 from orchestrator.domain import JobStatus
 from orchestrator.git.manager import GitManager
-from orchestrator.observability.logging import configure_logging
+from orchestrator.providers.base import PullRequestResult
 from orchestrator.validation import ValidationRunner
 from orchestrator.workflows.engine import OrchestratorEngine
-from orchestrator.providers.base import PullRequestResult
 
 
 class FakeCodex:

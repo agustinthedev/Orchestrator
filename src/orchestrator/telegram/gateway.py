@@ -112,11 +112,48 @@ class TelegramGateway:
             return await self.send("No pude interpretar ese mensaje.", chat_id=message.chat_id, message_type="clarification")
         self._persist_inbound(message, text)
         state = None
+        current_job = None
         if context and context.job_id:
             current_job = self.jobs.get(context.job_id)
             state = current_job.status if current_job else None
         intent = classify_intent(text, state=state, has_reply_context=context is not None)
         self._set_intent(message.update_id, intent.value)
+        if context and context.job_id and state == JobStatus.AWAITING_INPUT.value:
+            if re.search(r"\b(cancel|stop|abort)\b", text.casefold()):
+                self.jobs.transition(context.job_id, JobStatus.CANCELLED, {"reason": "user_cancelled_input"})
+                return await self.send("Cancelé el job pendiente.", chat_id=message.chat_id, job_id=context.job_id, message_type="job_cancelled")
+            self.jobs.add_input(context.job_id, text, telegram_user_id=message.user_id, telegram_message_id=message.message_id)
+            self.jobs.update_context(context.job_id, {"user_answers": [text], "voice_confirmation_pending": False})
+            self.jobs.transition(context.job_id, JobStatus.INPUT_RECEIVED, {"telegram_user_id": message.user_id})
+            self.jobs.transition(context.job_id, JobStatus.QUEUED, {"reason": "user_input_received"})
+            return await self.send("Respuesta registrada; reanudaré el job con este contexto.", chat_id=message.chat_id, job_id=context.job_id, message_type="input_received")
+        if message.voice_file_id and intent in {
+            Intent.FEATURE_REQUEST,
+            Intent.FIX_REQUEST,
+            Intent.REFACTOR_REQUEST,
+            Intent.TEST_REQUEST,
+            Intent.REQUEST_REVISION,
+        }:
+            project_id = context.project_id if context else self._find_project(text)
+            repository_id = context.repository_id if context else None
+            pending = self.jobs.create_job(
+                kind=intent.value,
+                idempotency_key=f"voice-confirmation:{message.update_id}",
+                project_id=project_id,
+                repository_id=repository_id,
+                request_text=text,
+                context={"voice_confirmation_pending": True, "transcript": text},
+                status=JobStatus.AWAITING_INPUT,
+            )
+            return await self.send(
+                f"Entendí:\n\n{text}\n\nEsto puede modificar archivos. Responde a este mensaje para confirmar o cancelar.",
+                chat_id=message.chat_id,
+                project_id=project_id,
+                repository_id=repository_id,
+                job_id=pending.id,
+                message_type="voice_confirmation",
+                execution_phase="awaiting_input",
+            )
         if intent == Intent.APPROVE_PUSH and context and context.job_id and context.head_sha:
             try:
                 self.jobs.approve_push(context.job_id, context.head_sha, message.user_id, message.message_id)
@@ -167,10 +204,28 @@ class TelegramGateway:
             )
             return await self.send("La pregunta quedó asociada al job y será respondida contra el diff local.", chat_id=message.chat_id, job_id=question_job.id, message_type="question_queued")
         project_id = context.project_id if context else self._find_project(text)
+        if intent in {
+            Intent.PROJECT_QUESTION,
+            Intent.CODE_ANALYSIS,
+            Intent.PIPELINE_ANALYSIS,
+            Intent.FEATURE_REQUEST,
+            Intent.FIX_REQUEST,
+            Intent.REFACTOR_REQUEST,
+            Intent.TEST_REQUEST,
+        } and not project_id:
+            return await self.send("¿Qué proyecto lógico debo usar? Responde con su ID configurado.", chat_id=message.chat_id, message_type="clarification")
         if self.job_creator:
             job_id = await self.job_creator(intent.value, project_id, context.repository_id if context else None, text)
             return await self.send("Recibido. Creé un job persistente para procesarlo.", chat_id=message.chat_id, job_id=job_id, project_id=project_id, message_type="job_created")
         return await self.send("Recibido, pero el worker todavía no está disponible.", chat_id=message.chat_id, message_type="status")
+
+    async def handle_callback(self, callback_id: str, data: str, *, user_id: str, chat_id: str, message_id: str) -> str | None:
+        if data == "approve_push":
+            result = await self.handle(InboundMessage(callback_id, chat_id, user_id, str(uuid.uuid4()), "Push it", message_id))
+            return result
+        if data == "reject_push":
+            return await self.handle(InboundMessage(callback_id, chat_id, user_id, str(uuid.uuid4()), "Reject push", message_id))
+        return await self.send("Acción de callback no reconocida.", chat_id=chat_id, message_type="clarification")
 
     async def transcribe_voice(self, voice_file_id: str) -> str:
         raise RuntimeError(f"Voice file download must be supplied by the Telegram adapter: {voice_file_id}")
