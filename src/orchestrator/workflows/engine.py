@@ -330,7 +330,14 @@ class OrchestratorEngine:
         if not approval:
             raise RuntimeError("No approved push record")
         self.jobs.transition(job.id, JobStatus.PUSHING, {"head_sha": approval.approved_head_sha})
-        pushed_head = self.git.push_after_approval(repository, Path(worktree.path), branch=worktree.branch_name, default_branch=repository.default_branch, approved_head_sha=approval.approved_head_sha)
+        pushed_head = self.git.push_after_approval(
+            repository,
+            Path(worktree.path),
+            branch=worktree.branch_name,
+            default_branch=repository.default_branch,
+            approved_head_sha=approval.approved_head_sha,
+            base_sha=worktree.base_sha,
+        )
         self.jobs.transition(job.id, JobStatus.CREATING_DRAFT_PR, {"head_sha": pushed_head})
         provider = self.provider_for(repository)
         if not provider or not project.permissions.allow_pull_request:

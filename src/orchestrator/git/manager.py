@@ -163,6 +163,7 @@ class GitManager:
         branch: str,
         default_branch: str,
         approved_head_sha: str,
+        base_sha: str,
     ) -> str:
         if not self.settings.require_push_approval:
             raise PushRefused("Push approval cannot be disabled")
@@ -173,6 +174,10 @@ class GitManager:
         actual = self.current_head(worktree_path)
         if self.settings.verify_approved_head_sha and actual != approved_head_sha:
             raise PushRefused(f"HEAD changed after approval: expected {approved_head_sha}, got {actual}")
+        if self.status_changed_files(worktree_path):
+            raise PushRefused("Cannot push a worktree with uncommitted changes")
+        if not self.commits_since(worktree_path, base_sha):
+            raise PushRefused("Cannot push a worktree without commits beyond its base")
         self.run(worktree_path, "push", "--no-force", repository.remote.name, f"HEAD:refs/heads/{branch}")
         return actual
 
