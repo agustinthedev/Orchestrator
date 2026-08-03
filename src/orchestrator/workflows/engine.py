@@ -225,7 +225,40 @@ class OrchestratorEngine:
         await self.notifier.send(self._push_manifest(project, repository, job, worktree, commits, changes, validation_results), chat_id=self._conversation_chat_id(), message_type="push_approval", project_id=project.id, repository_id=repository.id, job_id=job.id, phase="awaiting_push_approval", branch_name=worktree.branch, head_sha=head, thread_id=f"THREAD-{job.id}-PUSH")
 
     async def change_question(self, job: Job) -> None:
-        await self.question(job, global_scope=False)
+        target_id = str(job.context.get("target_job_id", ""))
+        target = self.jobs.get(target_id)
+        if not target:
+            raise ValueError("Target change job no longer exists")
+        project, repository = self._project_repository(target)
+        worktree = self._worktree_for(target.id)
+        if not worktree:
+            raise ValueError("Target change job has no worktree")
+        worktree_path = Path(worktree.path)
+        diff = self.git.run(worktree_path, "diff", "--stat", f"{worktree.base_sha}..HEAD").stdout
+        context = self._scope_context(project, repository, target, worktree.base_sha) + f"\nLocal diff stat:\n{diff}\nQuestion: {job.request_text}"
+        prompt = self._prompt("answer_change_question", context)
+        result = await self.codex.run(
+            cwd=self.config.resolve_project_path(project.id, worktree_path),
+            prompt=prompt,
+            model=self.codex.choose_model(project, task="diff_summarization"),
+            mode="read_only",
+            profile_path=project.codex.profile_path,
+        )
+        self._record_codex(job, result, "diff_explanation")
+        if result.exit_code != 0:
+            raise RuntimeError(result.stderr[-1000:])
+        answer = result.structured.answer if result.structured else result.stdout[-4000:]
+        await self.notifier.send(
+            answer or "No se obtuvo una explicación estructurada.",
+            chat_id=self._conversation_chat_id(),
+            message_type="diff_explanation",
+            project_id=project.id,
+            repository_id=repository.id,
+            job_id=job.id,
+            branch_name=worktree.branch_name,
+            head_sha=self.git.current_head(worktree_path),
+        )
+        self.jobs.transition(job.id, JobStatus.COMPLETED, {})
 
     async def push(self, job: Job) -> None:
         project, repository = self._project_repository(job)

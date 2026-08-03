@@ -147,9 +147,25 @@ class TelegramGateway:
             repository = self.config.repository(project.repository)
             implementation = self.jobs.create_job(kind="implementation", idempotency_key=f"implementation:{proposal.id}", project_id=project.id, repository_id=repository.id, request_text=proposal.description, context={"proposal_id": proposal.id, "branch_prefix": proposal.category})
             return await self.send(f"Propuesta {proposal.id} aprobada. Creé el job de implementación local; todavía no se hará push.", chat_id=message.chat_id, project_id=project.id, repository_id=repository.id, job_id=implementation.id, message_type="implementation_queued")
+        if intent == Intent.REJECT_PROPOSAL and context and context.job_id:
+            proposals = self.jobs.pending_proposals(context.job_id)
+            proposal = next((item for item in proposals if item.id.casefold() in text.casefold()), proposals[0] if len(proposals) == 1 else None)
+            if not proposal:
+                return await self.send("Indica el ID de la propuesta que deseas rechazar.", chat_id=message.chat_id, job_id=context.job_id, message_type="clarification")
+            self.jobs.reject_proposal(proposal.id, context.job_id)
+            self.jobs.transition(context.job_id, JobStatus.PROPOSAL_REJECTED, {"proposal_id": proposal.id, "telegram_user_id": message.user_id})
+            return await self.send(f"Propuesta {proposal.id} rechazada; no se modificarán archivos.", chat_id=message.chat_id, job_id=context.job_id, message_type="proposal_rejected")
         if intent == Intent.ASK_ABOUT_CHANGE and context and context.job_id:
             self.jobs.add_input(context.job_id, text, telegram_user_id=message.user_id, telegram_message_id=message.message_id)
-            return await self.send("La pregunta quedó asociada al job y será respondida contra el diff local.", chat_id=message.chat_id, job_id=context.job_id, message_type="question_queued")
+            question_job = self.jobs.create_job(
+                kind="change_question",
+                idempotency_key=f"change-question:{context.job_id}:{message.message_id}",
+                project_id=context.project_id,
+                repository_id=context.repository_id,
+                request_text=text,
+                context={"target_job_id": context.job_id},
+            )
+            return await self.send("La pregunta quedó asociada al job y será respondida contra el diff local.", chat_id=message.chat_id, job_id=question_job.id, message_type="question_queued")
         project_id = context.project_id if context else self._find_project(text)
         if self.job_creator:
             job_id = await self.job_creator(intent.value, project_id, context.repository_id if context else None, text)
