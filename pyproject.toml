@@ -1,0 +1,52 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "orchestrator"
+version = "0.1.0"
+description = "Safe Telegram-driven orchestration gateway for Codex and Git repositories"
+requires-python = ">=3.12"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Orchestrator contributors" }]
+dependencies = [
+  "alembic>=1.13,<2",
+  "APScheduler>=3.10,<4",
+  "httpx>=0.27,<1",
+  "pydantic>=2.8,<3",
+  "pydantic-settings>=2.4,<3",
+  "PyYAML>=6.0,<7",
+  "SQLAlchemy>=2.0,<3",
+]
+
+[project.optional-dependencies]
+telegram = ["python-telegram-bot>=21.5,<22"]
+transcription = ["openai>=1.40,<2"]
+dev = ["mypy>=1.11,<2", "pytest>=8.3,<9", "pytest-asyncio>=0.23,<1", "ruff>=0.6,<1"]
+
+[project.scripts]
+orchestrator = "orchestrator.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/orchestrator"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+plugins = []
+
