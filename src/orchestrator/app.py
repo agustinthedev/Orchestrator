@@ -61,7 +61,7 @@ class Application:
             for project_config in self.config.projects:
                 project_repository = self.config.repository(project_config.repository)
                 project_record = session.get(Project, project_config.id)
-                project_values = {"display_name": project_config.display_name, "repository_id": project_repository.id, "working_directory": project_config.working_directory, "scope": project_config.scope.model_dump(), "codex_config": project_config.codex.model_dump(), "validation_config": project_config.validation.model_dump(), "permissions": project_config.permissions.model_dump(), "pipelines": {key: value.model_dump() for key, value in project_config.pipelines.items()}}
+                project_values = {"display_name": project_config.display_name, "repository_id": project_repository.id, "working_directory": project_config.working_directory, "scope": project_config.scope.model_dump(mode="json"), "codex_config": project_config.codex.model_dump(mode="json"), "validation_config": project_config.validation.model_dump(mode="json"), "permissions": project_config.permissions.model_dump(mode="json"), "pipelines": {key: value.model_dump(mode="json") for key, value in project_config.pipelines.items()}}
                 if project_record:
                     for key, value in project_values.items():
                         setattr(project_record, key, value)

@@ -6,7 +6,7 @@ from sqlalchemy import engine_from_config, pool
 from orchestrator.database.models import Base
 
 config = context.config
-if config.config_file_name:
+if config.config_file_name and config.get_section("loggers"):
     fileConfig(config.config_file_name)
 target_metadata = Base.metadata
 
@@ -29,4 +29,3 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     run_migrations_online()
-
