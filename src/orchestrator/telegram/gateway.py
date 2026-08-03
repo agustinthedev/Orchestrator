@@ -106,7 +106,7 @@ class TelegramGateway:
             return None
         context = self.resolve_reply_context(message.chat_id, message.reply_to_message_id)
         text = message.text
-        if message.voice_file_id:
+        if message.voice_file_id and not text:
             text = await self.transcribe_voice(message.voice_file_id)
         if not text:
             return await self.send("No pude interpretar ese mensaje.", chat_id=message.chat_id, message_type="clarification")
@@ -180,6 +180,7 @@ class TelegramGateway:
             if not proposal:
                 return await self.send("Indica el ID de la propuesta que deseas aprobar.", chat_id=message.chat_id, job_id=context.job_id, message_type="clarification")
             self.jobs.approve_proposal(proposal.id, context.job_id, proposal.base_sha or "", message.user_id, message.message_id)
+            self.jobs.transition(context.job_id, JobStatus.PROPOSAL_APPROVED, {"proposal_id": proposal.id, "telegram_user_id": message.user_id})
             project = self.config.project(proposal.project_id)
             repository = self.config.repository(project.repository)
             implementation = self.jobs.create_job(kind="implementation", idempotency_key=f"implementation:{proposal.id}", project_id=project.id, repository_id=repository.id, request_text=proposal.description, context={"proposal_id": proposal.id, "branch_prefix": proposal.category})
