@@ -209,6 +209,7 @@ class OrchestratorEngine:
         if project.validation.required and any(not item.passed and not item.skipped for item in validation_results):
             raise RuntimeError("Required validation failed; push approval was not requested")
         head = self.git.current_head(worktree_path)
+        branch_name = worktree.branch_name if hasattr(worktree, "branch_name") else worktree.branch
         commits = self.git.commits_since(worktree_path, worktree.base_sha)
         changes = self.git.changed_files(worktree_path, worktree.base_sha)
         with self.database.session() as session:
@@ -222,7 +223,7 @@ class OrchestratorEngine:
             session.commit()
         self.jobs.create_push_approval(job.id, head, "system-pending")
         self.jobs.transition(job.id, JobStatus.AWAITING_PUSH_APPROVAL, {"head_sha": head, "files": len(changes)})
-        await self.notifier.send(self._push_manifest(project, repository, job, worktree, commits, changes, validation_results), chat_id=self._conversation_chat_id(), message_type="push_approval", project_id=project.id, repository_id=repository.id, job_id=job.id, phase="awaiting_push_approval", branch_name=worktree.branch, head_sha=head, thread_id=f"THREAD-{job.id}-PUSH")
+        await self.notifier.send(self._push_manifest(project, repository, job, worktree, commits, changes, validation_results), chat_id=self._conversation_chat_id(), message_type="push_approval", project_id=project.id, repository_id=repository.id, job_id=job.id, phase="awaiting_push_approval", branch_name=branch_name, head_sha=head, thread_id=f"THREAD-{job.id}-PUSH")
 
     async def change_question(self, job: Job) -> None:
         target_id = str(job.context.get("target_job_id", ""))
@@ -362,11 +363,12 @@ Return JSON with result_type in answer, analysis_result, proposals, needs_input,
 
     def _push_manifest(self, project: ProjectConfig, repository: RepositoryConfig, job: Job, worktree: Any, commits: list[tuple[str, str]], changes: list[Any], validations: list[Any]) -> str:
         validation = [f"{item.command}: {'passed' if item.passed else 'failed'}" for item in validations]
+        branch_name = worktree.branch_name if hasattr(worktree, "branch_name") else worktree.branch
         return f"""Change ready for push review
 
 Project: {project.id}
 Job: {job.id}
-Local branch: {worktree.branch_name}
+Local branch: {branch_name}
 Base branch: {repository.default_branch}
 HEAD: {self.git.current_head(Path(worktree.path))}
 
