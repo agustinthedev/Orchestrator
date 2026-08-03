@@ -5,6 +5,7 @@ import re
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from html import escape
 from typing import Any
 
 from sqlalchemy import select
@@ -50,6 +51,8 @@ class InboundMessage:
 
 
 Sender = Callable[[str, str], Awaitable[str]]
+ReplyMarkup = list[list[tuple[str, str]]]
+SenderWithOptions = Callable[[str, str, str | None, ReplyMarkup | None], Awaitable[str]]
 Reactor = Callable[[str, str, str], Awaitable[None]]
 JobCreator = Callable[[str, str | None, str | None, str, str], Awaitable[str]]
 ACK_REACTION = "👀"
@@ -66,6 +69,7 @@ class TelegramGateway:
         *,
         transcriber: Transcriber | None = None,
         sender: Sender | None = None,
+        sender_with_options: SenderWithOptions | None = None,
         reactor: Reactor | None = None,
         job_creator: JobCreator | None = None,
     ) -> None:
@@ -74,6 +78,7 @@ class TelegramGateway:
         self.jobs = jobs
         self.transcriber = transcriber or NullTranscriber()
         self.sender = sender
+        self.sender_with_options = sender_with_options
         self.reactor = reactor
         self.job_creator = job_creator
         self.connected = False
@@ -192,13 +197,17 @@ class TelegramGateway:
                 status=JobStatus.AWAITING_INPUT,
             )
             return await self.send(
-                f"Entendí:\n\n{text}\n\nEsto puede modificar archivos. Responde a este mensaje para confirmar o cancelar.",
+                f"<b>Entendí:</b>\n\n<blockquote>{escape(text)}</blockquote>\n\n<b>Esto puede modificar archivos.</b>\nUsa un botón o responde a este mensaje para confirmar o cancelar.",
                 chat_id=message.chat_id,
                 project_id=project_id,
                 repository_id=repository_id,
                 job_id=pending.id,
                 message_type="voice_confirmation",
                 execution_phase="awaiting_input",
+                parse_mode="HTML",
+                reply_markup=[
+                    [("Confirmar", f"confirm_job:{pending.id}"), ("Cancelar", f"cancel_job:{pending.id}")]
+                ],
             )
         if intent == Intent.APPROVE_PUSH and context and context.job_id and context.head_sha:
             try:
@@ -303,6 +312,10 @@ class TelegramGateway:
         return await self.send("Recibido, pero el worker todavía no está disponible.", chat_id=message.chat_id, message_type="status")
 
     async def handle_callback(self, callback_id: str, data: str, *, user_id: str, chat_id: str, message_id: str) -> str | None:
+        if data.startswith("confirm_job:"):
+            return await self.handle(InboundMessage(callback_id, chat_id, user_id, str(uuid.uuid4()), "Confirm", message_id))
+        if data.startswith("cancel_job:"):
+            return await self.handle(InboundMessage(callback_id, chat_id, user_id, str(uuid.uuid4()), "Cancel", message_id))
         if data == "approve_push":
             result = await self.handle(InboundMessage(callback_id, chat_id, user_id, str(uuid.uuid4()), "Push it", message_id))
             return result
@@ -327,9 +340,19 @@ class TelegramGateway:
         execution_phase: str | None = None,
         branch_name: str | None = None,
         head_sha: str | None = None,
+        parse_mode: str | None = None,
+        reply_markup: ReplyMarkup | None = None,
         **_extra: Any,
     ) -> str:
-        message_id = await self.sender(chat_id, text) if self.sender else str(uuid.uuid4())
+        effective_markup = reply_markup
+        if message_type == "push_approval" and effective_markup is None:
+            effective_markup = [[("Aprobar push", "approve_push"), ("Rechazar push", "reject_push")]]
+        if self.sender_with_options:
+            message_id = await self.sender_with_options(chat_id, text, parse_mode, effective_markup)
+        elif self.sender:
+            message_id = await self.sender(chat_id, text)
+        else:
+            message_id = str(uuid.uuid4())
         with self.database.session() as session:
             if thread_id:
                 thread = session.get(ConversationThread, thread_id)

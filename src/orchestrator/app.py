@@ -140,6 +140,19 @@ class Application:
             message = await self._telegram_app.bot.send_message(chat_id=chat_id, text=text)
             return str(message.message_id)
 
+        async def sender_with_options(chat_id: str, text: str, parse_mode: str | None, reply_markup: Any) -> str:
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+            options: dict[str, Any] = {"chat_id": chat_id, "text": text}
+            if parse_mode:
+                options["parse_mode"] = parse_mode
+            if reply_markup:
+                options["reply_markup"] = InlineKeyboardMarkup(
+                    [[InlineKeyboardButton(label, callback_data=data) for label, data in row] for row in reply_markup]
+                )
+            message = await self._telegram_app.bot.send_message(**options)
+            return str(message.message_id)
+
         async def reactor(chat_id: str, message_id: str, emoji: str) -> None:
             await self._telegram_app.bot.set_message_reaction(
                 chat_id=chat_id,
@@ -148,6 +161,7 @@ class Application:
             )
 
         self.telegram.sender = sender
+        self.telegram.sender_with_options = sender_with_options
         self.telegram.reactor = reactor
         try:
             from telegram.ext import CallbackQueryHandler, MessageHandler, filters
