@@ -192,18 +192,20 @@ class Application:
                 return
             text = message.text
             voice_file_id = None
-            if message.voice:
-                voice_file_id = str(message.voice.file_id)
-                file = await self._telegram_app.bot.get_file(message.voice.file_id)
+            audio = message.voice or message.audio
+            if audio:
+                voice_file_id = str(audio.file_id)
+                file = await self._telegram_app.bot.get_file(audio.file_id)
                 temporary = self.config.runtime.temporary_root
                 temporary.mkdir(parents=True, exist_ok=True)
-                audio_path = temporary / f"voice-{message.voice.file_unique_id}.ogg"
+                extension = ".ogg" if message.voice else ".mp3"
+                audio_path = temporary / f"voice-{audio.file_unique_id}{extension}"
                 await file.download_to_drive(custom_path=str(audio_path))
                 text = await self.telegram.transcriber.transcribe(audio_path)
             await self.telegram.handle(InboundMessage(update_id=str(update.update_id), chat_id=str(update.effective_chat.id), user_id=str(update.effective_user.id), message_id=str(message.message_id), text=text, reply_to_message_id=str(message.reply_to_message.message_id) if message.reply_to_message else None, voice_file_id=voice_file_id))
 
         self._telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_update))
-        self._telegram_app.add_handler(MessageHandler(filters.VOICE, handle_update))
+        self._telegram_app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_update))
 
         async def handle_callback(update: Any, _context: Any) -> None:
             query = update.callback_query
@@ -219,6 +221,32 @@ class Application:
             )
 
         self._telegram_app.add_handler(CallbackQueryHandler(handle_callback))
+
+        async def handle_error(update: Any, context: Any) -> None:
+            error = context.error
+            logger.error(
+                "Telegram update failed: %s",
+                error,
+                extra={"event_type": "TELEGRAM_UPDATE_FAILURE"},
+            )
+            message = update.effective_message if update else None
+            user = update.effective_user if update else None
+            chat = update.effective_chat if update else None
+            if not message or not user or not chat or not self.telegram.authorized(str(user.id), str(chat.id)):
+                return
+            try:
+                await self.telegram.send(
+                    "No pude procesar ese audio o mensaje. Revisé el error y podés intentarlo nuevamente.",
+                    chat_id=str(chat.id),
+                    message_type="telegram_error",
+                )
+            except Exception:
+                logger.exception(
+                    "Could not send Telegram error response",
+                    extra={"event_type": "TELEGRAM_ERROR_RESPONSE_FAILURE"},
+                )
+
+        self._telegram_app.add_error_handler(handle_error)
         await self._telegram_app.initialize()
         await self._telegram_app.start()
         if self._telegram_app.updater:
