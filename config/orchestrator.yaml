@@ -27,6 +27,12 @@ telegram:
     provider: openai
     api_key_env: OPENAI_API_KEY
     model: gpt-4o-mini-transcribe
+  intent_classification:
+    provider: openai
+    api_key_env: OPENAI_API_KEY
+    model: gpt-4o-mini
+    min_confidence: 0.45
+    max_output_tokens: 250
 
 codex:
   executable: C:/Users/User/AppData/Roaming/npm/codex.cmd

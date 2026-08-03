@@ -43,6 +43,15 @@ class TranscriptionSettings(BaseModel):
     confirm_write_transcriptions: bool = True
 
 
+class IntentClassificationSettings(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    provider: Literal["openai", "none"] = "openai"
+    api_key_env: str = "OPENAI_API_KEY"
+    model: str = "gpt-4o-mini"
+    min_confidence: float = Field(default=0.45, ge=0, le=1)
+    max_output_tokens: int = Field(default=250, ge=1)
+
+
 class TelegramSettings(BaseModel):
     model_config = ConfigDict(extra="ignore")
     bot_token_env: str = "TELEGRAM_BOT_TOKEN"
@@ -51,6 +60,7 @@ class TelegramSettings(BaseModel):
     conversation_chat_id_env: str = "TELEGRAM_CONVERSATION_CHAT_ID"
     status_chat_id_env: str = "TELEGRAM_STATUS_CHAT_ID"
     transcription: TranscriptionSettings = Field(default_factory=TranscriptionSettings)
+    intent_classification: IntentClassificationSettings = Field(default_factory=IntentClassificationSettings)
     notification_routes: dict[str, list[str]] = Field(default_factory=dict)
 
 

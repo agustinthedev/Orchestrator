@@ -73,6 +73,7 @@ def configured_secret_names(config: AppConfig) -> set[str]:
         config.telegram.conversation_chat_id_env,
         config.telegram.status_chat_id_env,
         config.telegram.transcription.api_key_env,
+        config.telegram.intent_classification.api_key_env,
     }
     for repository in config.repositories:
         if repository.github:
