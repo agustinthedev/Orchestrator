@@ -22,7 +22,7 @@ from orchestrator.database.models import (
     Worktree,
     utcnow,
 )
-from orchestrator.domain import JobStatus
+from orchestrator.domain import JobStatus, descriptive_branch_label
 from orchestrator.git.manager import GitManager
 from orchestrator.jobs.service import JobService
 from orchestrator.observability.logging import get_logger
@@ -225,7 +225,7 @@ class OrchestratorEngine:
         if not worktree:
             self.jobs.transition(job.id, JobStatus.PREPARING_WORKTREE, {})
             proposal_id = str(job.context.get("proposal_id", ""))
-            branch_label = str(job.context.get("branch_label") or job.request_text or "change")
+            branch_label = str(job.context.get("branch_label") or descriptive_branch_label(job.request_text or ""))
             info = self.git.create_worktree(
                 repository,
                 job_id=job.id,

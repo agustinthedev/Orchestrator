@@ -176,6 +176,28 @@ def sanitize_branch_name(value: str, *, prefix: str = "change") -> str:
     return normalized[:240].rstrip(".-/")
 
 
+def descriptive_branch_label(value: str) -> str:
+    """Create a short human-readable label from a natural-language request."""
+    text = value.casefold()
+    if re.search(r"\b(readme|readme\.md)\b", text):
+        return "update-readme"
+    file_match = re.search(
+        r"\b(?:[a-z0-9_-]+[\\/])*([a-z0-9_-]+\.(?:md|json|ts|tsx|js|jsx|py|yaml|yml|toml|sql))\b",
+        text,
+    )
+    if file_match:
+        return f"update-{file_match.group(1).replace('.', '-')}"
+    if re.search(r"\b(refactor|restructure|clean up)\b", text):
+        return "refactor-request"
+    if re.search(r"\b(test|tests|coverage|spec)\b", text):
+        return "update-tests"
+    if re.search(r"\b(fix|bug|error|failure|broken)\b", text):
+        return "fix-request"
+    if re.search(r"\b(add|implement|introduce|support|feature)\b", text):
+        return "add-feature"
+    return "requested-change"
+
+
 def normalize_relative_path(path: str) -> str:
     candidate = path.replace("\\", "/").strip()
     candidate = str(PurePosixPath(candidate))

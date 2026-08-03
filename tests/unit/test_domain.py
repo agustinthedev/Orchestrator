@@ -1,6 +1,7 @@
 from orchestrator.domain import (
     Intent,
     classify_intent,
+    descriptive_branch_label,
     paths_are_allowed,
     redact_secrets,
     sanitize_branch_name,
@@ -12,6 +13,10 @@ def test_branch_name_is_safe_and_namespaced() -> None:
     assert value.startswith("fix/")
     assert " " not in value
     assert ".." not in value
+
+
+def test_descriptive_branch_label_uses_the_requested_file() -> None:
+    assert descriptive_branch_label("Hacé los cambios solo en el archivo README") == "update-readme"
 
 
 def test_scope_enforcement_blocks_forbidden_and_unlisted_paths() -> None:

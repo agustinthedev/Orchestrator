@@ -29,6 +29,62 @@ async def test_reply_context_resolves_exact_outbound_message(database, jobs, see
 
 
 @pytest.mark.asyncio
+async def test_diff_question_reply_is_not_treated_as_push_approval(database, jobs, seeded_config, monkeypatch) -> None:
+    monkeypatch.setenv("TELEGRAM_ALLOWED_USER_IDS", "42")
+    monkeypatch.setenv("TELEGRAM_ALLOWED_CHAT_IDS", "7")
+    target = jobs.create_job(kind="implementation", idempotency_key="push-question-target", project_id="project")
+    jobs.transition(target.id, JobStatus.QUEUED)
+    jobs.transition(target.id, JobStatus.RUNNING)
+    jobs.transition(target.id, JobStatus.PREPARING_WORKTREE)
+    jobs.transition(target.id, JobStatus.IMPLEMENTING)
+    jobs.transition(target.id, JobStatus.VALIDATING)
+    jobs.transition(target.id, JobStatus.AWAITING_PUSH_APPROVAL)
+    approval_message_id = await TelegramGateway(seeded_config, database, jobs).send(
+        "Change ready",
+        chat_id="7",
+        message_type="push_approval",
+        project_id="project",
+        job_id=target.id,
+        head_sha="head1",
+    )
+    gateway = TelegramGateway(
+        seeded_config,
+        database,
+        jobs,
+        classifier=FixedClassifier(Intent.REQUEST_DIFF_DETAIL),
+    )
+
+    response = await gateway.handle(
+        InboundMessage(
+            "diff-question",
+            "7",
+            "42",
+            "question-message",
+            "Qué archivos cambiaron y qué se hizo en cada uno?",
+            reply_to_message_id=approval_message_id,
+        )
+    )
+
+    assert response is not None
+    with database.session() as session:
+        from sqlalchemy import select
+
+        from orchestrator.database.models import Job, TelegramOutboundMessage
+
+        question = session.scalar(select(Job).where(Job.id != target.id).order_by(Job.created_at.desc()))
+        assert question is not None
+        assert question.kind == "change_question"
+        assert question.context["target_job_id"] == target.id
+        outbound = session.scalar(
+            select(TelegramOutboundMessage)
+            .where(TelegramOutboundMessage.message_type == "question_queued")
+            .order_by(TelegramOutboundMessage.created_at.desc())
+        )
+        assert outbound is not None
+        assert "diff local" in outbound.text
+
+
+@pytest.mark.asyncio
 async def test_natural_message_creates_global_job(database, jobs, config, monkeypatch) -> None:
     monkeypatch.setenv("TELEGRAM_ALLOWED_USER_IDS", "42")
     monkeypatch.setenv("TELEGRAM_ALLOWED_CHAT_IDS", "7")
