@@ -200,6 +200,21 @@ class TelegramGateway:
             self.jobs.reject_proposal(proposal.id, context.job_id)
             self.jobs.transition(context.job_id, JobStatus.PROPOSAL_REJECTED, {"proposal_id": proposal.id, "telegram_user_id": message.user_id})
             return await self.send(f"Propuesta {proposal.id} rechazada; no se modificarán archivos.", chat_id=message.chat_id, job_id=context.job_id, message_type="proposal_rejected")
+        if context and context.job_id and state == JobStatus.AWAITING_PUSH_APPROVAL.value:
+            return await self.send(
+                f"¿Autorizas explícitamente hacer push del HEAD {context.head_sha or 'actual'} y crear el draft PR? Responde `Push it` o `Reject push`.",
+                chat_id=message.chat_id,
+                job_id=context.job_id,
+                message_type="approval_clarification",
+                head_sha=context.head_sha,
+            )
+        if context and context.job_id and state == JobStatus.AWAITING_PROPOSAL_APPROVAL.value:
+            return await self.send(
+                "Indica explícitamente el ID de la propuesta que deseas aprobar o rechazar.",
+                chat_id=message.chat_id,
+                job_id=context.job_id,
+                message_type="proposal_clarification",
+            )
         if intent == Intent.ASK_ABOUT_CHANGE and context and context.job_id:
             self.jobs.add_input(context.job_id, text, telegram_user_id=message.user_id, telegram_message_id=message.message_id)
             question_job = self.jobs.create_job(

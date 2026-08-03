@@ -153,7 +153,38 @@ class OrchestratorEngine:
             f"- {item}" for item in diagnostic.get("evidence", [])
         )
         await self.notifier.send(message, chat_id=self._conversation_chat_id(), message_type="pipeline_failure", project_id=project.id, repository_id=repository.id, job_id=job.id)
-        self.jobs.transition(job.id, JobStatus.COMPLETED, {"fix_proposal_supported": diagnostic.get("code_fix_supported", False)})
+        if diagnostic.get("code_fix_supported") and diagnostic.get("evidence"):
+            proposal_id = f"{project.id.upper()}-PIPELINE-{run.external_id}"
+            with self.database.session() as session:
+                existing = session.get(Proposal, proposal_id)
+                if not existing:
+                    from datetime import timedelta
+
+                    session.add(
+                        Proposal(
+                            id=proposal_id,
+                            job_id=job.id,
+                            project_id=project.id,
+                            repository_id=repository.id,
+                            review_id=job.id,
+                            category="bug",
+                            title=f"Investigate pipeline failure {run.external_id}",
+                            description="Pipeline evidence supports a scoped code or configuration investigation.",
+                            evidence=list(diagnostic.get("evidence", [])),
+                            affected_files=[],
+                            scope_estimate="unknown",
+                            confidence=0.6,
+                            risk="review required",
+                            suggested_validation=["Re-run the failed pipeline after review"],
+                            base_sha=self.git.base_sha(repository, fetch=False),
+                            expires_at=utcnow() + timedelta(days=7),
+                        )
+                    )
+                session.commit()
+            self.jobs.transition(job.id, JobStatus.AWAITING_PROPOSAL_APPROVAL, {"proposal_id": proposal_id})
+            await self.notifier.send(f"Hay evidencia para una propuesta de fix: {proposal_id}. Revisa y aprueba explícitamente antes de modificar código.", chat_id=self._conversation_chat_id(), message_type="pipeline_proposal", project_id=project.id, repository_id=repository.id, job_id=job.id)
+            return
+        self.jobs.transition(job.id, JobStatus.COMPLETED, {"fix_proposal_supported": False})
 
     async def question(self, job: Job, *, global_scope: bool) -> None:
         project = None if global_scope else self.config.project(job.project_id or "")
@@ -287,6 +318,8 @@ class OrchestratorEngine:
             raise RuntimeError("Pull-request provider or project permission is not configured")
         body = draft_pr_description(summary=f"Resolves `{job.id}`.", problem=job.request_text or "Approved Orchestrator change.", changes=["See the local commit and file manifest."], validation=["See persisted validation runs."], risk="Review required.", limitations=["Draft PR; no automatic merge or completion."], files=[], proposal_id=job.context.get("proposal_id"), commits=[], base_sha=worktree.base_sha, head_sha=pushed_head)
         pr = provider.create_draft_pull_request(title=f"Orchestrator: {job.id}", body=body, head=worktree.branch_name, base=repository.default_branch, idempotency_key=f"pr:{job.id}")
+        if not pr.is_draft:
+            raise RuntimeError("Provider returned a non-draft pull request; refusing to continue")
         with self.database.session() as session:
             existing = session.scalar(select(PullRequest).where(PullRequest.job_id == job.id))
             if not existing:
