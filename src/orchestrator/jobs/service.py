@@ -175,6 +175,10 @@ class JobService:
             proposal = session.get(Proposal, proposal_id)
             if not proposal or proposal.job_id != job_id or proposal.status != "pending":
                 raise ValueError("Proposal is not pending for this job")
+            if proposal.expires_at and proposal.expires_at <= utcnow():
+                proposal.status = "expired"
+                session.commit()
+                raise ValueError("Proposal has expired")
             proposal.status = "approved"
             session.add(
                 ProposalApproval(
@@ -185,6 +189,14 @@ class JobService:
                     telegram_message_id=message_id,
                 )
             )
+            session.commit()
+
+    def reject_proposal(self, proposal_id: str, job_id: str) -> None:
+        with self.database.session() as session:
+            proposal = session.get(Proposal, proposal_id)
+            if not proposal or proposal.job_id != job_id or proposal.status != "pending":
+                raise ValueError("Proposal is not pending for this job")
+            proposal.status = "rejected"
             session.commit()
 
     def create_push_approval(self, job_id: str, head_sha: str, user_id: str, message_id: str | None = None) -> PushApproval:

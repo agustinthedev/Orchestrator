@@ -46,6 +46,7 @@ ALLOWED_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
         JobStatus.CANCELLED,
         JobStatus.NEEDS_REVIEW,
         JobStatus.PUSHING,
+        JobStatus.IMPLEMENTING_REVISION,
     },
     JobStatus.AWAITING_INPUT: {JobStatus.INPUT_RECEIVED, JobStatus.EXPIRED, JobStatus.CANCELLED},
     JobStatus.INPUT_RECEIVED: {JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.CANCELLED},

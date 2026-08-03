@@ -196,7 +196,7 @@ class ScheduleConfig(BaseModel):
     cron: str
     enabled: bool = True
     timezone: str | None = None
-    misfire_grace_time: int = Field(default=300, ge=0)
+    misfire_grace_time: int = Field(default=300, ge=1)
     coalesce: bool = True
     max_instances: int = Field(default=1, ge=1)
     parameters: dict[str, object] = Field(default_factory=dict)
@@ -245,4 +245,3 @@ def is_within(path: Path, root: Path) -> bool:
         return True
     except ValueError:
         return False
-

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 from pathlib import Path
 from typing import Any
@@ -73,7 +74,8 @@ class Application:
             "PIPELINE_ANALYSIS": "pipeline_review",
             "CODE_ANALYSIS": "daily_code_review",
         }.get(intent, intent)
-        job = self.jobs.create_job(kind=kind, idempotency_key=f"telegram:{hash((intent, project_id, text))}", project_id=project_id, repository_id=repository_id, request_text=text, context={})
+        digest = hashlib.sha256(f"{intent}\0{project_id or ''}\0{text}".encode()).hexdigest()
+        job = self.jobs.create_job(kind=kind, idempotency_key=f"telegram:{digest}", project_id=project_id, repository_id=repository_id, request_text=text, context={})
         return job.id
 
     async def _scheduled_workflow(self, _schedule: Any) -> None:

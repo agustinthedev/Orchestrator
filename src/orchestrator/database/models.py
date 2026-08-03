@@ -149,6 +149,7 @@ class Proposal(Base):
 
 class ProposalApproval(Base):
     __tablename__ = "proposal_approvals"
+    __table_args__ = (UniqueConstraint("proposal_id", "telegram_user_id", name="uq_proposal_user"),)
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     proposal_id: Mapped[str] = mapped_column(ForeignKey("proposals.id"), index=True)
     job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), index=True)
@@ -331,4 +332,3 @@ class CredentialsMetadata(Base):
 
 Index("ix_proposal_job_status", Proposal.job_id, Proposal.status)
 Index("ix_push_approval_job_status", PushApproval.job_id, PushApproval.status)
-UniqueConstraint(ProposalApproval.proposal_id, ProposalApproval.telegram_user_id, name="uq_proposal_user")

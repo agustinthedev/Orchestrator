@@ -92,7 +92,9 @@ class GitManager:
         if not is_within(path, self.worktrees_root.resolve()):
             raise GitError("Worktree path escaped configured worktree root")
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.run(repository.local_path, "branch", branch, base_sha)
+        existing_branch = self.run(repository.local_path, "show-ref", "--verify", f"refs/heads/{branch}", check=False)
+        if existing_branch.returncode != 0:
+            self.run(repository.local_path, "branch", branch, base_sha)
         self.run(repository.local_path, "worktree", "add", str(path), branch)
         return WorktreeInfo(str(uuid.uuid4()), path, branch, base_sha)
 
@@ -133,6 +135,7 @@ class GitManager:
     def enforce_scope(self, worktree_path: Path, base_sha: str, scope: ScopeConfig) -> tuple[bool, list[str]]:
         changes = self.changed_files(worktree_path, base_sha)
         paths = [change.path for change in changes]
+        paths.extend(self.status_changed_files(worktree_path))
         return paths_are_allowed(
             paths,
             allowed_write_paths=scope.allowed_write_paths,

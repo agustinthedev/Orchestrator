@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from orchestrator.config.models import AppConfig, ScheduleConfig
 from orchestrator.database.engine import Database
-from orchestrator.database.models import Schedule
+from orchestrator.database.models import Schedule, utcnow
 from orchestrator.jobs.service import JobService
 
 WorkflowFactory = Callable[[ScheduleConfig], Awaitable[None]]
@@ -95,7 +94,7 @@ class SchedulerService:
         )
 
     async def _run_schedule(self, item: ScheduleConfig) -> None:
-        idempotency = f"schedule:{item.id}:{datetime.utcnow().strftime('%Y%m%d%H%M')}"
+        idempotency = f"schedule:{item.id}:{utcnow().strftime('%Y%m%d%H%M')}"
         self.jobs.create_job(
             kind=item.workflow,
             idempotency_key=idempotency,
@@ -103,4 +102,10 @@ class SchedulerService:
             request_text=f"Scheduled workflow: {item.workflow}",
             context={"schedule_id": item.id, "parameters": item.parameters},
         )
+        with self.database.session() as session:
+            record = session.get(Schedule, item.id)
+            if record:
+                record.last_run_at = utcnow()
+                record.next_run_at = None
+                session.commit()
         await self.workflow_factory(item)
