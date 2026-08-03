@@ -19,7 +19,7 @@ from orchestrator.database.models import (
     TelegramOutboundMessage,
     utcnow,
 )
-from orchestrator.domain import Intent, JobStatus
+from orchestrator.domain import Intent, JobStatus, redact_secrets
 from orchestrator.intent_classifier import (
     IntentClassification,
     IntentClassifier,
@@ -63,6 +63,7 @@ SenderWithOptions = Callable[[str, str, str | None, ReplyMarkup | None], Awaitab
 Reactor = Callable[[str, str, str], Awaitable[None]]
 JobCreator = Callable[[str, str | None, str | None, str, str], Awaitable[str]]
 ACK_REACTION = "👀"
+FAILURE_REACTION = "❌"
 
 
 class TelegramGateway:
@@ -238,6 +239,9 @@ class TelegramGateway:
                     "transcript": text,
                     "revision_request": text if is_revision else None,
                     "target_job_id": context.job_id if is_revision and context else None,
+                    "telegram_update_id": message.update_id,
+                    "telegram_chat_id": message.chat_id,
+                    "telegram_message_id": message.message_id,
                 },
                 status=JobStatus.AWAITING_INPUT,
             )
@@ -352,21 +356,60 @@ class TelegramGateway:
             return await self.send("Recibido. Creé un job persistente para procesarlo.", chat_id=message.chat_id, job_id=job_id, project_id=project_id, message_type="job_created")
         return await self.send("Recibido, pero el worker todavía no está disponible.", chat_id=message.chat_id, message_type="status")
 
-    async def _react_to_message(self, message: InboundMessage, *, job_id: str | None = None) -> None:
-        if message.acknowledged or not self.reactor:
+    async def _react(self, chat_id: str, message_id: str, emoji: str, *, job_id: str | None = None) -> None:
+        if not self.reactor:
             return
         try:
-            await self.reactor(message.chat_id, message.message_id, ACK_REACTION)
+            await self.reactor(chat_id, message_id, emoji)
         except Exception:
             logger.exception(
                 "Could not react to Telegram message",
                 extra={"event_type": "TELEGRAM_REACTION_FAILURE", "job_id": job_id},
             )
 
+    async def _react_to_message(self, message: InboundMessage, *, job_id: str | None = None) -> None:
+        if message.acknowledged:
+            return
+        await self._react(message.chat_id, message.message_id, ACK_REACTION, job_id=job_id)
+
     async def acknowledge(self, message: InboundMessage) -> None:
         """Send the immediate Telegram receipt before any expensive processing."""
         if self.authorized(message.user_id, message.chat_id):
             await self._react_to_message(message)
+
+    async def reject(self, message: InboundMessage) -> None:
+        """Mark a Telegram update as failed without interrupting error handling."""
+        if self.authorized(message.user_id, message.chat_id):
+            await self._react(message.chat_id, message.message_id, FAILURE_REACTION)
+
+    async def report_job_failure(self, job: Job, error: Exception) -> None:
+        source = self._job_source(job)
+        if source:
+            await self._react(source[0], source[1], FAILURE_REACTION, job_id=job.id)
+        chat_id = source[0] if source else os.getenv(self.config.telegram.conversation_chat_id_env, "conversation")
+        detail = redact_secrets(str(error))[-1500:]
+        await self.send(
+            f"❌ El job {job.id} falló y no se solicitará push.\n\n{detail}",
+            chat_id=chat_id,
+            project_id=job.project_id,
+            job_id=job.id,
+            message_type="job_failed",
+        )
+
+    def _job_source(self, job: Job) -> tuple[str, str] | None:
+        chat_id = job.context.get("telegram_chat_id")
+        message_id = job.context.get("telegram_message_id")
+        if chat_id and message_id:
+            return str(chat_id), str(message_id)
+        update_id = job.context.get("telegram_update_id")
+        if update_id:
+            with self.database.session() as session:
+                inbound = session.scalar(
+                    select(TelegramInboundMessage).where(TelegramInboundMessage.update_id == str(update_id))
+                )
+                if inbound:
+                    return inbound.chat_id, inbound.message_id
+        return None
 
     async def handle_callback(self, callback_id: str, data: str, *, user_id: str, chat_id: str, message_id: str) -> str | None:
         if data.startswith("confirm_job:"):

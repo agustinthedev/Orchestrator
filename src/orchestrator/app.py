@@ -64,7 +64,13 @@ class Application:
             job_creator=self._create_message_job,
         )
         self.engine = OrchestratorEngine(config, self.database, self.jobs, self.codex, self.git, self.validator, notifier=self.telegram)
-        self.workers = WorkerPool(self.jobs, self.engine.handle_job, count=config.workers.max_concurrent_codex_runs, poll_interval=config.workers.poll_interval_seconds)
+        self.workers = WorkerPool(
+            self.jobs,
+            self.engine.handle_job,
+            count=config.workers.max_concurrent_codex_runs,
+            poll_interval=config.workers.poll_interval_seconds,
+            failure_handler=self.telegram.report_job_failure,
+        )
         self.scheduler = SchedulerService(config, self.database, self.jobs, self._scheduled_workflow)
         self._telegram_app: Any = None
 
@@ -116,7 +122,14 @@ class Application:
             "CODE_ANALYSIS": "daily_code_review",
         }.get(intent, intent)
         digest = hashlib.sha256(f"{update_id}\0{intent}\0{project_id or ''}\0{text}".encode()).hexdigest()
-        job = self.jobs.create_job(kind=kind, idempotency_key=f"telegram:{digest}", project_id=project_id, repository_id=repository_id, request_text=text, context={})
+        job = self.jobs.create_job(
+            kind=kind,
+            idempotency_key=f"telegram:{digest}",
+            project_id=project_id,
+            repository_id=repository_id,
+            request_text=text,
+            context={"telegram_update_id": update_id},
+        )
         return job.id
 
     async def _scheduled_workflow(self, _schedule: Any) -> None:
@@ -274,6 +287,14 @@ class Application:
             if not message or not user or not chat or not self.telegram.authorized(str(user.id), str(chat.id)):
                 return
             try:
+                await self.telegram.reject(
+                    InboundMessage(
+                        update_id=str(update.update_id),
+                        chat_id=str(chat.id),
+                        user_id=str(user.id),
+                        message_id=str(message.message_id),
+                    )
+                )
                 await self.telegram.send(
                     "No pude procesar ese audio o mensaje. Revisé el error y podés intentarlo nuevamente.",
                     chat_id=str(chat.id),

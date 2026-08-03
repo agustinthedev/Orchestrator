@@ -183,6 +183,35 @@ async def test_unknown_message_does_not_create_worker_job(database, jobs, config
 
 
 @pytest.mark.asyncio
+async def test_worker_failure_reacts_and_reports_to_source_message(database, jobs, seeded_config, monkeypatch) -> None:
+    monkeypatch.setenv("TELEGRAM_ALLOWED_USER_IDS", "42")
+    monkeypatch.setenv("TELEGRAM_ALLOWED_CHAT_IDS", "7")
+    sent: list[str] = []
+    reactions: list[tuple[str, str, str]] = []
+
+    async def sender(chat_id: str, text: str) -> str:
+        del chat_id
+        sent.append(text)
+        return "failure-message"
+
+    async def reactor(chat_id: str, message_id: str, emoji: str) -> None:
+        reactions.append((chat_id, message_id, emoji))
+
+    job = jobs.create_job(
+        kind="implementation",
+        idempotency_key="failure-report",
+        project_id="project",
+        context={"telegram_chat_id": "7", "telegram_message_id": "source-message"},
+    )
+    gateway = TelegramGateway(seeded_config, database, jobs, sender=sender, reactor=reactor)
+
+    await gateway.report_job_failure(job, RuntimeError("validation failed"))
+
+    assert reactions == [("7", "source-message", "❌")]
+    assert "validation failed" in sent[0]
+
+
+@pytest.mark.asyncio
 async def test_voice_mutation_requires_confirmation(database, jobs, seeded_config, monkeypatch) -> None:
     monkeypatch.setenv("TELEGRAM_ALLOWED_USER_IDS", "42")
     monkeypatch.setenv("TELEGRAM_ALLOWED_CHAT_IDS", "7")

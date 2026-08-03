@@ -12,14 +12,24 @@ logger = get_logger(__name__)
 
 
 JobHandler = Callable[[Job], Awaitable[None]]
+FailureHandler = Callable[[Job, Exception], Awaitable[None]]
 
 
 class WorkerPool:
-    def __init__(self, jobs: JobService, handler: JobHandler, *, count: int = 1, poll_interval: float = 2) -> None:
+    def __init__(
+        self,
+        jobs: JobService,
+        handler: JobHandler,
+        *,
+        count: int = 1,
+        poll_interval: float = 2,
+        failure_handler: FailureHandler | None = None,
+    ) -> None:
         self.jobs = jobs
         self.handler = handler
         self.count = count
         self.poll_interval = poll_interval
+        self.failure_handler = failure_handler
         self._stop = asyncio.Event()
         self._tasks: list[asyncio.Task[None]] = []
 
@@ -48,3 +58,11 @@ class WorkerPool:
                     self.jobs.transition(job.id, JobStatus.FAILED, {"error": str(exc)})
                 except Exception:
                     logger.exception("Could not persist worker failure", extra={"job_id": job.id})
+                if self.failure_handler:
+                    try:
+                        await self.failure_handler(job, exc)
+                    except Exception:
+                        logger.exception(
+                            "Could not report worker failure",
+                            extra={"job_id": job.id, "event_type": "WORKER_FAILURE_REPORTING"},
+                        )
