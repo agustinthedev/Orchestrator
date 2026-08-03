@@ -139,7 +139,20 @@ class CodexRunner:
     @staticmethod
     def parse_structured_output(stdout: str) -> StructuredCodexResult | None:
         candidates = [stdout.strip()]
-        candidates.extend(line.strip() for line in stdout.splitlines() if line.strip().startswith("{"))
+        for line in stdout.splitlines():
+            stripped = line.strip()
+            if not stripped.startswith("{"):
+                continue
+            candidates.append(stripped)
+            try:
+                event = json.loads(stripped)
+            except json.JSONDecodeError:
+                continue
+            item = event.get("item") if isinstance(event, dict) else None
+            if isinstance(item, dict) and item.get("type") == "agent_message":
+                message = item.get("text")
+                if isinstance(message, str) and message.strip():
+                    candidates.append(message.strip())
         for candidate in reversed(candidates):
             try:
                 value = json.loads(candidate)

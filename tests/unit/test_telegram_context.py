@@ -21,15 +21,20 @@ async def test_natural_message_creates_global_job(database, jobs, config, monkey
     monkeypatch.setenv("TELEGRAM_ALLOWED_USER_IDS", "42")
     monkeypatch.setenv("TELEGRAM_ALLOWED_CHAT_IDS", "7")
     created: list[str] = []
+    reactions: list[tuple[str, str, str]] = []
 
-    async def creator(intent: str, project_id: str | None, repository_id: str | None, text: str) -> str:
+    async def creator(intent: str, project_id: str | None, repository_id: str | None, text: str, update_id: str) -> str:
         created.append(intent)
         return "job-1"
 
-    gateway = TelegramGateway(config, database, jobs, job_creator=creator)
+    async def reactor(chat_id: str, message_id: str, emoji: str) -> None:
+        reactions.append((chat_id, message_id, emoji))
+
+    gateway = TelegramGateway(config, database, jobs, reactor=reactor, job_creator=creator)
     reply = await gateway.handle(InboundMessage("update-1", "7", "42", "message-1", "How does the scheduler work?"))
-    assert reply is not None
+    assert reply is None
     assert created == ["GLOBAL_QUESTION"]
+    assert reactions == [("7", "message-1", "👀")]
 
 
 @pytest.mark.asyncio

@@ -43,7 +43,7 @@ class WorkerPool:
             try:
                 await self.handler(job)
             except Exception as exc:
-                logger.exception("Worker failed", extra={"job_id": job.id, "event_type": "WORKER_FAILURE"})
+                logger.exception("Worker failed: %s", exc, extra={"job_id": job.id, "event_type": "WORKER_FAILURE"})
                 try:
                     self.jobs.transition(job.id, JobStatus.FAILED, {"error": str(exc)})
                 except Exception:

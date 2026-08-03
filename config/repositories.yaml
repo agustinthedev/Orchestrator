@@ -1,0 +1,12 @@
+repositories:
+  - id: treidin-repository
+    display_name: Treidin
+    local_path: C:/Users/User/OneDrive/Documentos/Traidin
+    provider: github
+    default_branch: main
+    remote:
+      name: origin
+    github:
+      owner: agustinthedev
+      repository: Treidin
+      token_env: GITHUB_TOKEN

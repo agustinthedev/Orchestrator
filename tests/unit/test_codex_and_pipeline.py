@@ -1,13 +1,34 @@
+from pathlib import Path
+
 from orchestrator.codex.routing import ModelRoutingPolicy
 from orchestrator.codex.runner import CodexRunner
 from orchestrator.config.models import CodexSettings, ModelSpec
 from orchestrator.pipelines.analyzer import FailureClass, classify_failure
+from orchestrator.workflows.engine import OrchestratorEngine
+
+
+def test_prompt_includes_context_once_and_keeps_the_exact_question(tmp_path: Path) -> None:
+    (tmp_path / "project_question.md").write_text("Answer directly.\n{{context}}", encoding="utf-8")
+    engine = object.__new__(OrchestratorEngine)
+    engine.prompts_root = tmp_path
+
+    prompt = engine._prompt("project_question", "User's exact request: ¿Qué hace Treidin?")
+
+    assert prompt.count("User's exact request") == 1
+    assert prompt.startswith("Answer directly.")
 
 
 def test_structured_codex_output_is_validated() -> None:
     parsed = CodexRunner.parse_structured_output('{"result_type":"answer","answer":"safe"}')
     assert parsed is not None
     assert parsed.result_type == "answer"
+    assert parsed.answer == "safe"
+
+
+def test_structured_codex_output_is_extracted_from_jsonl_agent_message() -> None:
+    output = '{"type":"item.completed","item":{"type":"agent_message","text":"{\\"result_type\\":\\"answer\\",\\"answer\\":\\"safe\\"}"}}'
+    parsed = CodexRunner.parse_structured_output(output)
+    assert parsed is not None
     assert parsed.answer == "safe"
 
 

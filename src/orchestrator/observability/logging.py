@@ -2,11 +2,19 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
 
 from orchestrator.domain import redact_secrets
+
+_SECRET_ENV_NAMES = (
+    "TELEGRAM_BOT_TOKEN",
+    "OPENAI_API_KEY",
+    "GITHUB_TOKEN",
+    "AZURE_DEVOPS_PAT",
+)
 
 
 class JsonFormatter(logging.Formatter):
@@ -15,7 +23,7 @@ class JsonFormatter(logging.Formatter):
             "timestamp": self.formatTime(record, "%Y-%m-%dT%H:%M:%S%z"),
             "level": record.levelname,
             "logger": record.name,
-            "message": redact_secrets(record.getMessage()),
+            "message": redact_secrets(record.getMessage(), (os.getenv(name, "") for name in _SECRET_ENV_NAMES)),
         }
         for key in ("correlation_id", "job_id", "project_id", "repository_id", "execution_id", "event_type"):
             value = getattr(record, key, None)
@@ -36,8 +44,9 @@ def configure_logging(logs_root: Path, *, level: int = logging.INFO) -> None:
     root.setLevel(level)
     root.addHandler(handler)
     root.addHandler(console)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(name)
-

@@ -458,7 +458,9 @@ Return JSON with result_type in answer, analysis_result, proposals, needs_input,
     def _prompt(self, name: str, context: str) -> str:
         path = self.prompts_root / f"{name}.md"
         template = path.read_text(encoding="utf-8") if path.exists() else "{context}"
-        return template.replace("{{context}}", context) + "\n\n" + context
+        if "{{context}}" in template:
+            return template.replace("{{context}}", context)
+        return template + "\n\n" + context
 
     def _record_codex(self, job: Job, result: Any, phase: str) -> None:
         with self.database.session() as session:

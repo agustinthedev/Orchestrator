@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
+
 from orchestrator.codex.runner import CodexRunner
 from orchestrator.config import load_config
 from orchestrator.config.loader import configured_secret_names
@@ -80,14 +82,21 @@ class Application:
                     session.add(CredentialsMetadata(name=name, environment_variable=name, available=bool(os.getenv(name))))
             session.commit()
 
-    async def _create_message_job(self, intent: str, project_id: str | None, repository_id: str | None, text: str) -> str:
+    async def _create_message_job(
+        self,
+        intent: str,
+        project_id: str | None,
+        repository_id: str | None,
+        text: str,
+        update_id: str,
+    ) -> str:
         kind = {
             "GLOBAL_QUESTION": "global_question",
             "PROJECT_QUESTION": "project_question",
             "PIPELINE_ANALYSIS": "pipeline_review",
             "CODE_ANALYSIS": "daily_code_review",
         }.get(intent, intent)
-        digest = hashlib.sha256(f"{intent}\0{project_id or ''}\0{text}".encode()).hexdigest()
+        digest = hashlib.sha256(f"{update_id}\0{intent}\0{project_id or ''}\0{text}".encode()).hexdigest()
         job = self.jobs.create_job(kind=kind, idempotency_key=f"telegram:{digest}", project_id=project_id, repository_id=repository_id, request_text=text, context={})
         return job.id
 
@@ -131,7 +140,15 @@ class Application:
             message = await self._telegram_app.bot.send_message(chat_id=chat_id, text=text)
             return str(message.message_id)
 
+        async def reactor(chat_id: str, message_id: str, emoji: str) -> None:
+            await self._telegram_app.bot.set_message_reaction(
+                chat_id=chat_id,
+                message_id=int(message_id),
+                reaction=emoji,
+            )
+
         self.telegram.sender = sender
+        self.telegram.reactor = reactor
         try:
             from telegram.ext import CallbackQueryHandler, MessageHandler, filters
         except ImportError as exc:
@@ -178,6 +195,7 @@ class Application:
 
 
 def build_application(config_dir: Path | str | None = None) -> Application:
+    load_dotenv()
     directory: Path | str = config_dir if config_dir is not None else os.getenv("ORCHESTRATOR_CONFIG_DIR", "config")
     return Application(load_config(directory))
 

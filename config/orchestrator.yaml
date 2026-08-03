@@ -1,0 +1,60 @@
+application:
+  name: orchestrator
+  environment: development
+  timezone: America/Montevideo
+
+database:
+  url: sqlite:///data/orchestrator.db
+
+runtime:
+  worktrees_root: data/worktrees
+  logs_root: logs
+  temporary_root: data/tmp
+
+workers:
+  max_concurrent_codex_runs: 2
+  max_write_jobs_per_repository: 1
+  max_read_jobs_per_repository: 3
+  poll_interval_seconds: 2
+
+telegram:
+  bot_token_env: TELEGRAM_BOT_TOKEN
+  allowed_user_ids_env: TELEGRAM_ALLOWED_USER_IDS
+  allowed_chat_ids_env: TELEGRAM_ALLOWED_CHAT_IDS
+  conversation_chat_id_env: TELEGRAM_CONVERSATION_CHAT_ID
+  status_chat_id_env: TELEGRAM_STATUS_CHAT_ID
+  transcription:
+    provider: openai
+    api_key_env: OPENAI_API_KEY
+    model: gpt-4o-mini-transcribe
+
+codex:
+  executable: C:/Users/User/AppData/Roaming/npm/codex.cmd
+  default_model:
+    name: gpt-5.6-luna
+    reasoning_effort: extra_high
+  allowed_models:
+    - gpt-5.6-luna
+  allowed_reasoning_efforts: [low, medium, high, extra_high]
+  task_reasoning_effort:
+    classification: low
+    global_question: medium
+    project_question: medium
+    daily_code_review: high
+    pipeline_review: high
+    implementation: extra_high
+    diff_summarization: medium
+  escalation_enabled: true
+  require_user_approval_for_expensive_models: true
+  expensive_models: []
+
+git:
+  allow_force_push: false
+  allow_direct_default_branch_push: false
+  require_push_approval: true
+  verify_approved_head_sha: true
+
+pull_requests:
+  always_draft: true
+  allow_auto_merge: false
+  allow_auto_complete: false

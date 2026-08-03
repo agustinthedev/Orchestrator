@@ -1,0 +1,26 @@
+projects:
+  - id: Treidin
+    display_name: Treidin
+    repository: treidin-repository
+    working_directory: .
+    codex:
+      profile_path: C:/Users/User/.codex
+      model_override: gpt-5.6-luna
+      reasoning_effort_override: extra_high
+      enabled: true
+    scope:
+      allowed_read_paths: [.] 
+      allowed_write_paths: [.] 
+      forbidden_paths: []
+    validation:
+      commands:
+        - npm.cmd test
+        - npm.cmd run typecheck
+        - npm.cmd run lint
+      required: true
+    permissions:
+      allow_read: true
+      allow_changes: true
+      allow_push: true
+      allow_pull_request: true
+      allow_merge: false

@@ -146,7 +146,10 @@ def classify_intent(text: str, *, state: str | None = None, has_reply_context: b
         return Intent.REQUEST_DIFF_DETAIL
     if re.search(r"\b(schedule|scheduler|worktree|orchestrator|jobs? waiting|health|credential)\b", value):
         return Intent.GLOBAL_QUESTION
-    if re.search(r"\b(review|analy[sz]e|find (the )?function|where is|how does|repository|repo)\b", value):
+    if re.search(
+        r"\b(review|revis\w*|analy[sz]e|analiz\w*|analisis|análisis|find (the )?function|where is|how does|repository|repo)\b",
+        value,
+    ):
         return Intent.PROJECT_QUESTION
     if re.search(r"\b(refactor|restructure|clean up)\b", value):
         return Intent.REFACTOR_REQUEST
@@ -210,4 +213,6 @@ def redact_secrets(text: str, secret_values: Iterable[str] = ()) -> str:
         if secret:
             redacted = redacted.replace(secret, "[REDACTED]")
     redacted = re.sub(r"(?i)(token|password|pat|api[_-]?key)\s*[:=]\s*[^\s,;]+", r"\1=[REDACTED]", redacted)
+    redacted = re.sub(r"(?i)(/bot)\d{6,}:[A-Za-z0-9_-]{20,}", r"\1[REDACTED]", redacted)
+    redacted = re.sub(r"(?i)(bearer\s+)[A-Za-z0-9._~+/=-]+", r"\1[REDACTED]", redacted)
     return redacted

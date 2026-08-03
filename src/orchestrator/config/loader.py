@@ -22,7 +22,9 @@ def _read_yaml(path: Path) -> dict[str, Any]:
 
 def _read_collection(directory: Path, pattern: str, key: str) -> list[dict[str, Any]]:
     values: list[dict[str, Any]] = []
-    for path in sorted(directory.glob(pattern)) if directory.exists() else []:
+    paths = sorted(directory.glob(pattern)) if directory.exists() else []
+    concrete_paths = [path for path in paths if not path.name.endswith(".example.yaml")]
+    for path in concrete_paths or paths:
         data = _read_yaml(path)
         value = data.get(key, data)
         if isinstance(value, list):
@@ -78,4 +80,3 @@ def configured_secret_names(config: AppConfig) -> set[str]:
         if repository.azure_devops:
             names.add(repository.azure_devops.pat_env)
     return names
-

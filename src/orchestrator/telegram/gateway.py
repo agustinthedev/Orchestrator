@@ -49,7 +49,9 @@ class InboundMessage:
 
 
 Sender = Callable[[str, str], Awaitable[str]]
-JobCreator = Callable[[str, str | None, str | None, str], Awaitable[str]]
+Reactor = Callable[[str, str, str], Awaitable[None]]
+JobCreator = Callable[[str, str | None, str | None, str, str], Awaitable[str]]
+ACK_REACTION = "👀"
 
 
 class TelegramGateway:
@@ -63,6 +65,7 @@ class TelegramGateway:
         *,
         transcriber: Transcriber | None = None,
         sender: Sender | None = None,
+        reactor: Reactor | None = None,
         job_creator: JobCreator | None = None,
     ) -> None:
         self.config = config
@@ -70,6 +73,7 @@ class TelegramGateway:
         self.jobs = jobs
         self.transcriber = transcriber or NullTranscriber()
         self.sender = sender
+        self.reactor = reactor
         self.job_creator = job_creator
         self.connected = False
 
@@ -243,7 +247,22 @@ class TelegramGateway:
         } and not project_id:
             return await self.send("¿Qué proyecto lógico debo usar? Responde con su ID configurado.", chat_id=message.chat_id, message_type="clarification")
         if self.job_creator:
-            job_id = await self.job_creator(intent.value, project_id, context.repository_id if context else None, text)
+            job_id = await self.job_creator(
+                intent.value,
+                project_id,
+                context.repository_id if context else None,
+                text,
+                message.update_id,
+            )
+            if self.reactor:
+                try:
+                    await self.reactor(message.chat_id, message.message_id, ACK_REACTION)
+                except Exception:
+                    logger.exception(
+                        "Could not react to Telegram message",
+                        extra={"event_type": "TELEGRAM_REACTION_FAILURE", "job_id": job_id},
+                    )
+                return None
             return await self.send("Recibido. Creé un job persistente para procesarlo.", chat_id=message.chat_id, job_id=job_id, project_id=project_id, message_type="job_created")
         return await self.send("Recibido, pero el worker todavía no está disponible.", chat_id=message.chat_id, message_type="status")
 
