@@ -81,6 +81,9 @@ class CodexSettings(BaseModel):
             "diff_summarization": "medium",
         }
     )
+    escalation_enabled: bool = True
+    require_user_approval_for_expensive_models: bool = True
+    expensive_models: list[str] = Field(default_factory=list)
 
 
 class GitSettings(BaseModel):

@@ -45,6 +45,9 @@ codex:
     pipeline_review: high
     implementation: extra_high
     diff_summarization: medium
+  escalation_enabled: true
+  require_user_approval_for_expensive_models: true
+  expensive_models: []
 
 git:
   allow_force_push: false

@@ -22,6 +22,8 @@ class PipelineRunInfo:
 
 
 class SourceControlProvider(Protocol):
+    def repository_metadata(self) -> dict[str, Any]: ...
+
     def create_draft_pull_request(
         self, *, title: str, body: str, head: str, base: str, idempotency_key: str
     ) -> PullRequestResult: ...
@@ -94,4 +96,3 @@ def draft_pr_description(
 
 Please review the scope and validation evidence before publishing this draft pull request.
 """
-

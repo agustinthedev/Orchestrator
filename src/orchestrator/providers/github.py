@@ -48,6 +48,9 @@ class GitHubProvider:
             raise RuntimeError("GitHub did not create the pull request as a draft")
         return PullRequestResult(str(data["number"]), data["html_url"], True, data)
 
+    def repository_metadata(self) -> dict[str, Any]:
+        return cast(dict[str, Any], self._request("GET", self.base_url).json())
+
     def _find_by_head(self, head: str) -> dict[str, Any] | None:
         response = self._request("GET", f"{self.base_url}/pulls", params={"state": "open", "head": f"{self.owner}:{head}"})
         items = response.json()

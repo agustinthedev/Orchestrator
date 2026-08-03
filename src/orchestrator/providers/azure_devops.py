@@ -64,6 +64,10 @@ class AzureDevOpsProvider:
             raise RuntimeError("Azure DevOps did not create the pull request as a draft")
         return PullRequestResult(str(data["pullRequestId"]), data["url"], True, data)
 
+    def repository_metadata(self) -> dict[str, Any]:
+        url = f"{self.base_url}/{self.project}/_apis/git/repositories/{self.repository_id}"
+        return cast(dict[str, Any], self._request("GET", url).json())
+
     def _find_by_head(self, head: str) -> dict[str, Any] | None:
         url = f"{self.base_url}/{self.project}/_apis/git/repositories/{self.repository_id}/pullrequests"
         response = self._request("GET", url, params={"searchCriteria.sourceRefName": f"refs/heads/{head}", "searchCriteria.status": "active"})
