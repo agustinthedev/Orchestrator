@@ -134,7 +134,7 @@ def classify_intent(text: str, *, state: str | None = None, has_reply_context: b
         return Intent.APPROVE_PROPOSAL
     if re.search(r"\b(reject|not this|no thanks)\b", value) and state == "awaiting_proposal_approval":
         return Intent.REJECT_PROPOSAL
-    if re.search(r"\b(remove|drop|revert|change|revise|keep only|instead)\b", value) and has_reply_context:
+    if re.search(r"\b(remove|drop|revert|change|cambi\w*|modific\w*|actualiz\w*|revise|revis\w*|keep only|solo|instead)\b", value) and has_reply_context:
         return Intent.REQUEST_REVISION
     if re.search(r"\b(why|explain|what changed|which files|diff)\b", value) and has_reply_context:
         return Intent.ASK_ABOUT_CHANGE
@@ -155,7 +155,7 @@ def classify_intent(text: str, *, state: str | None = None, has_reply_context: b
         return Intent.REFACTOR_REQUEST
     if re.search(r"\b(test|coverage|spec)\b", value):
         return Intent.TEST_REQUEST
-    if re.search(r"\b(add|implement|introduce|support|feature)\b", value):
+    if re.search(r"\b(add|implement|introduce|support|feature|hacer|cambi\w*|modific\w*|actualiz\w*)\b", value):
         return Intent.FEATURE_REQUEST
     if re.search(r"\b(fix|bug|broken|failure|error|incorrect)\b", value):
         return Intent.FIX_REQUEST

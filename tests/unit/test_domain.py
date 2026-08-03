@@ -31,6 +31,12 @@ def test_intent_classification_never_treats_explanation_as_push() -> None:
     assert classify_intent("Analiza el estado actual del proyecto Treidin") == Intent.PROJECT_QUESTION
 
 
+def test_intent_classification_understands_spanish_change_reply() -> None:
+    text = "¿Podrías hacer ese cambio, específicamente solo la actualización del README?"
+
+    assert classify_intent(text, has_reply_context=True) == Intent.REQUEST_REVISION
+
+
 def test_secret_redaction() -> None:
     assert "super-secret" not in redact_secrets("token=super-secret", ["super-secret"])
     assert "[REDACTED]" in redact_secrets("api_key=abc123")
