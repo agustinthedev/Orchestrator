@@ -183,9 +183,25 @@ class Application:
         self.telegram.sender_with_options = sender_with_options
         self.telegram.reactor = reactor
         try:
+            from telegram.error import NetworkError, TimedOut
             from telegram.ext import CallbackQueryHandler, MessageHandler, filters
         except ImportError as exc:
             raise RuntimeError("Install orchestrator[telegram] for Telegram support") from exc
+
+        async def download_audio(audio: Any, audio_path: Path) -> None:
+            for attempt in range(3):
+                try:
+                    file = await self._telegram_app.bot.get_file(audio.file_id)
+                    await file.download_to_drive(custom_path=str(audio_path))
+                    return
+                except (TimeoutError, NetworkError, TimedOut):
+                    if attempt == 2:
+                        raise
+                    logger.warning(
+                        "Retrying Telegram audio download",
+                        extra={"event_type": "TELEGRAM_AUDIO_RETRY"},
+                    )
+                    await asyncio.sleep(attempt + 1)
 
         async def handle_update(update: Any, _context: Any) -> None:
             message = update.effective_message
@@ -203,17 +219,29 @@ class Application:
                 reply_to_message_id=str(message.reply_to_message.message_id) if message.reply_to_message else None,
                 voice_file_id=str(audio.file_id) if audio else None,
             )
-            await self.telegram.acknowledge(inbound)
-            if audio:
-                voice_file_id = str(audio.file_id)
-                file = await self._telegram_app.bot.get_file(audio.file_id)
-                temporary = self.config.runtime.temporary_root
-                temporary.mkdir(parents=True, exist_ok=True)
-                extension = ".ogg" if message.voice else ".mp3"
-                audio_path = temporary / f"voice-{audio.file_unique_id}{extension}"
-                await file.download_to_drive(custom_path=str(audio_path))
-                text = await self.telegram.transcriber.transcribe(audio_path)
-            await self.telegram.handle(replace(inbound, text=text, voice_file_id=voice_file_id, acknowledged=True))
+            stage = "acknowledgement"
+            try:
+                await self.telegram.acknowledge(inbound)
+                if audio:
+                    voice_file_id = str(audio.file_id)
+                    temporary = self.config.runtime.temporary_root
+                    temporary.mkdir(parents=True, exist_ok=True)
+                    extension = ".ogg" if message.voice else ".mp3"
+                    audio_path = temporary / f"voice-{audio.file_unique_id}{extension}"
+                    stage = "audio_download"
+                    await download_audio(audio, audio_path)
+                    stage = "transcription"
+                    text = await self.telegram.transcriber.transcribe(audio_path)
+                stage = "gateway"
+                await self.telegram.handle(replace(inbound, text=text, voice_file_id=voice_file_id, acknowledged=True))
+            except Exception as exc:
+                logger.error(
+                    "Telegram update failed during %s: %s",
+                    stage,
+                    exc,
+                    extra={"event_type": "TELEGRAM_UPDATE_FAILURE"},
+                )
+                raise
 
         self._telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_update))
         self._telegram_app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_update))

@@ -513,12 +513,20 @@ class TelegramGateway:
         """Build the optional python-telegram-bot application for long polling."""
         try:
             from telegram.ext import ApplicationBuilder
+            from telegram.request import HTTPXRequest
         except ImportError as exc:
             raise RuntimeError("Install orchestrator[telegram] to use Telegram long polling") from exc
         token = os.getenv(self.config.telegram.bot_token_env)
         if not token:
             raise RuntimeError(f"Telegram bot token is not configured: {self.config.telegram.bot_token_env}")
-        return ApplicationBuilder().token(token).build()
+        request = HTTPXRequest(
+            read_timeout=60,
+            write_timeout=60,
+            connect_timeout=15,
+            pool_timeout=15,
+            media_write_timeout=60,
+        )
+        return ApplicationBuilder().token(token).request(request).build()
 
 
 def _csv_env(name: str) -> set[str]:
