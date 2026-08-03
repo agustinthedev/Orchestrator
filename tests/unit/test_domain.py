@@ -1,4 +1,10 @@
-from orchestrator.domain import Intent, classify_intent, paths_are_allowed, redact_secrets, sanitize_branch_name
+from orchestrator.domain import (
+    Intent,
+    classify_intent,
+    paths_are_allowed,
+    redact_secrets,
+    sanitize_branch_name,
+)
 
 
 def test_branch_name_is_safe_and_namespaced() -> None:
@@ -27,4 +33,3 @@ def test_intent_classification_never_treats_explanation_as_push() -> None:
 def test_secret_redaction() -> None:
     assert "super-secret" not in redact_secrets("token=super-secret", ["super-secret"])
     assert "[REDACTED]" in redact_secrets("api_key=abc123")
-

@@ -36,11 +36,11 @@ logger = get_logger(__name__)
 
 
 class Notifier(Protocol):
-    async def send(self, text: str, **kwargs: Any) -> str: ...
+    async def send(self, text: str, *, chat_id: str, message_type: str, **kwargs: Any) -> str: ...
 
 
 class NullNotifier:
-    async def send(self, text: str, **kwargs: Any) -> str:
+    async def send(self, text: str, *, chat_id: str, message_type: str, **kwargs: Any) -> str:
         logger.info(text, extra={"event_type": kwargs.get("message_type", "NOTIFICATION")})
         return str(uuid.uuid4())
 
@@ -178,7 +178,7 @@ class OrchestratorEngine:
     async def implementation(self, job: Job) -> None:
         project, repository = self._project_repository(job)
         self._ensure_write_allowed(project)
-        worktree = self._worktree_for(job.id)
+        worktree: Any = self._worktree_for(job.id)
         if not worktree:
             self.jobs.transition(job.id, JobStatus.PREPARING_WORKTREE, {})
             proposal_id = str(job.context.get("proposal_id", ""))

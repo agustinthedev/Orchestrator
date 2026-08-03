@@ -123,7 +123,12 @@ class GitManager:
 
     def commits_since(self, worktree_path: Path, base_sha: str) -> list[tuple[str, str]]:
         result = self.run(worktree_path, "log", "--format=%H%x09%s", f"{base_sha}..HEAD")
-        return [tuple(line.split("\t", 1)) for line in result.stdout.splitlines() if "\t" in line]
+        commits: list[tuple[str, str]] = []
+        for line in result.stdout.splitlines():
+            if "\t" in line:
+                sha, subject = line.split("\t", 1)
+                commits.append((sha, subject))
+        return commits
 
     def enforce_scope(self, worktree_path: Path, base_sha: str, scope: ScopeConfig) -> tuple[bool, list[str]]:
         changes = self.changed_files(worktree_path, base_sha)
@@ -162,4 +167,3 @@ class GitManager:
         if force:
             args.append("--force")
         self.run(repository.local_path, *args, str(worktree_path))
-

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 import os
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -72,11 +72,11 @@ class AzureDevOpsProvider:
 
     def get_pull_request(self, provider_id: str) -> dict[str, Any]:
         url = f"{self.base_url}/{self.project}/_apis/git/repositories/{self.repository_id}/pullrequests/{provider_id}"
-        return self._request("GET", url).json()
+        return cast(dict[str, Any], self._request("GET", url).json())
 
     def add_pull_request_comment(self, provider_id: str, body: str) -> dict[str, Any]:
         url = f"{self.base_url}/{self.project}/_apis/git/repositories/{self.repository_id}/pullrequests/{provider_id}/threads"
-        return self._request("POST", url, json={"comments": [{"content": body, "commentType": 1}]}).json()
+        return cast(dict[str, Any], self._request("POST", url, json={"comments": [{"content": body, "commentType": 1}]}).json())
 
     def latest_pipeline_run(self, pipeline_id: str) -> PipelineRunInfo | None:
         url = f"{self.base_url}/{self.project}/_apis/build/builds"
@@ -91,4 +91,3 @@ class AzureDevOpsProvider:
         url = f"{self.base_url}/{self.project}/_apis/build/builds/{run_id}/logs"
         response = self._request("GET", url)
         return response.text[:max_chars]
-

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -56,10 +56,10 @@ class GitHubProvider:
         return items[0] if items else None
 
     def get_pull_request(self, provider_id: str) -> dict[str, Any]:
-        return self._request("GET", f"{self.base_url}/pulls/{provider_id}").json()
+        return cast(dict[str, Any], self._request("GET", f"{self.base_url}/pulls/{provider_id}").json())
 
     def add_pull_request_comment(self, provider_id: str, body: str) -> dict[str, Any]:
-        return self._request("POST", f"{self.base_url}/issues/{provider_id}/comments", json={"body": body}).json()
+        return cast(dict[str, Any], self._request("POST", f"{self.base_url}/issues/{provider_id}/comments", json={"body": body}).json())
 
     def latest_pipeline_run(self, pipeline_id: str) -> PipelineRunInfo | None:
         response = self._request("GET", f"{self.base_url}/actions/workflows/{pipeline_id}/runs", params={"per_page": 1})

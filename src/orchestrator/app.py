@@ -46,24 +46,24 @@ class Application:
 
     def _persist_config(self) -> None:
         with self.database.session() as session:
-            for item in self.config.repositories:
-                existing = session.get(Repository, item.id)
-                values = {"display_name": item.display_name, "local_path": str(item.local_path), "provider": item.provider, "default_branch": item.default_branch, "remote_name": item.remote.name, "provider_config": item.model_dump(exclude={"id", "display_name", "local_path", "provider", "default_branch", "remote", "concurrency"})}
-                if existing:
-                    for key, value in values.items():
-                        setattr(existing, key, value)
+            for repository_config in self.config.repositories:
+                repository_record = session.get(Repository, repository_config.id)
+                repository_values = {"display_name": repository_config.display_name, "local_path": str(repository_config.local_path), "provider": repository_config.provider, "default_branch": repository_config.default_branch, "remote_name": repository_config.remote.name, "provider_config": repository_config.model_dump(exclude={"id", "display_name", "local_path", "provider", "default_branch", "remote", "concurrency"})}
+                if repository_record:
+                    for key, value in repository_values.items():
+                        setattr(repository_record, key, value)
                 else:
-                    session.add(Repository(id=item.id, **values))
+                    session.add(Repository(id=repository_config.id, **repository_values))
             session.flush()
-            for item in self.config.projects:
-                repository = self.config.repository(item.repository)
-                existing = session.get(Project, item.id)
-                values = {"display_name": item.display_name, "repository_id": repository.id, "working_directory": item.working_directory, "scope": item.scope.model_dump(), "codex_config": item.codex.model_dump(), "validation_config": item.validation.model_dump(), "permissions": item.permissions.model_dump(), "pipelines": {key: value.model_dump() for key, value in item.pipelines.items()}}
-                if existing:
-                    for key, value in values.items():
-                        setattr(existing, key, value)
+            for project_config in self.config.projects:
+                project_repository = self.config.repository(project_config.repository)
+                project_record = session.get(Project, project_config.id)
+                project_values = {"display_name": project_config.display_name, "repository_id": project_repository.id, "working_directory": project_config.working_directory, "scope": project_config.scope.model_dump(), "codex_config": project_config.codex.model_dump(), "validation_config": project_config.validation.model_dump(), "permissions": project_config.permissions.model_dump(), "pipelines": {key: value.model_dump() for key, value in project_config.pipelines.items()}}
+                if project_record:
+                    for key, value in project_values.items():
+                        setattr(project_record, key, value)
                 else:
-                    session.add(Project(id=item.id, **values))
+                    session.add(Project(id=project_config.id, **project_values))
             session.commit()
 
     async def _create_message_job(self, intent: str, project_id: str | None, repository_id: str | None, text: str) -> str:
@@ -148,10 +148,9 @@ class Application:
 
 
 def build_application(config_dir: Path | str | None = None) -> Application:
-    directory = config_dir or os.getenv("ORCHESTRATOR_CONFIG_DIR", "config")
+    directory: Path | str = config_dir if config_dir is not None else os.getenv("ORCHESTRATOR_CONFIG_DIR", "config")
     return Application(load_config(directory))
 
 
 def main() -> None:
     asyncio.run(build_application().run_forever())
-

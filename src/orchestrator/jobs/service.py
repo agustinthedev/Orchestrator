@@ -104,7 +104,7 @@ class JobService:
                 .where(Job.id == job.id, Job.status == JobStatus.QUEUED.value)
                 .values(status=JobStatus.RUNNING.value, updated_at=utcnow())
             )
-            if result.rowcount != 1:
+            if getattr(result, "rowcount", 0) != 1:
                 session.rollback()
                 return None
             self._event(session, job.id, "JOB_CLAIMED", {})
@@ -143,9 +143,9 @@ class JobService:
 
     def pending_proposals(self, job_id: str) -> list[Proposal]:
         with self.database.session() as session:
-            return session.scalars(
+            return list(session.scalars(
                 select(Proposal).where(Proposal.job_id == job_id, Proposal.status == "pending")
-            ).all()
+            ).all())
 
     def add_question(
         self,

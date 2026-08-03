@@ -111,7 +111,10 @@ class TelegramGateway:
         if not text:
             return await self.send("No pude interpretar ese mensaje.", chat_id=message.chat_id, message_type="clarification")
         self._persist_inbound(message, text)
-        state = self.jobs.get(context.job_id).status if context and context.job_id and self.jobs.get(context.job_id) else None
+        state = None
+        if context and context.job_id:
+            current_job = self.jobs.get(context.job_id)
+            state = current_job.status if current_job else None
         intent = classify_intent(text, state=state, has_reply_context=context is not None)
         self._set_intent(message.update_id, intent.value)
         if intent == Intent.APPROVE_PUSH and context and context.job_id and context.head_sha:
@@ -170,6 +173,7 @@ class TelegramGateway:
         execution_phase: str | None = None,
         branch_name: str | None = None,
         head_sha: str | None = None,
+        **_extra: Any,
     ) -> str:
         message_id = await self.sender(chat_id, text) if self.sender else str(uuid.uuid4())
         with self.database.session() as session:

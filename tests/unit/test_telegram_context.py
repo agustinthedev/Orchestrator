@@ -1,5 +1,3 @@
-import os
-
 import pytest
 
 from orchestrator.telegram.gateway import InboundMessage, TelegramGateway

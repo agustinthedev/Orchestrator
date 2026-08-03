@@ -78,7 +78,7 @@ class SchedulerService:
 
     @property
     def running(self) -> bool:
-        return self.scheduler.running
+        return bool(self.scheduler.running)
 
     def _trigger(self, item: ScheduleConfig) -> CronTrigger:
         parts = item.cron.split()
@@ -104,4 +104,3 @@ class SchedulerService:
             context={"schedule_id": item.id, "parameters": item.parameters},
         )
         await self.workflow_factory(item)
-

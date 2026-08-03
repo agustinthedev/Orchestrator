@@ -23,7 +23,7 @@ dependencies = [
 [project.optional-dependencies]
 telegram = ["python-telegram-bot>=21.5,<22"]
 transcription = ["openai>=1.40,<2"]
-dev = ["mypy>=1.11,<2", "pytest>=8.3,<9", "pytest-asyncio>=0.23,<1", "ruff>=0.6,<1"]
+dev = ["mypy>=1.11,<2", "pytest>=8.3,<9", "pytest-asyncio>=0.23,<1", "ruff>=0.6,<1", "types-PyYAML>=6.0,<7"]
 
 [project.scripts]
 orchestrator = "orchestrator.__main__:main"

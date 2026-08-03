@@ -19,8 +19,7 @@ class FailureClass(StrEnum):
     UNKNOWN = "unknown"
 
 
-class PipelineDiagnostic(dict[str, Any]):
-    pass
+PipelineDiagnostic = dict[str, Any]
 
 
 class PipelineAnalyzer:
@@ -77,4 +76,3 @@ def evidence_for_failure(failure: FailureClass, logs: str) -> list[str]:
         FailureClass.CONFIGURATION: ("configuration", "invalid config"),
     }.get(failure, ())
     return [line[-500:] for line in logs.splitlines() if any(keyword in line.casefold() for keyword in keywords)][-10:]
-
