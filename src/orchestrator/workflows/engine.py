@@ -316,7 +316,23 @@ class OrchestratorEngine:
         provider = self.provider_for(repository)
         if not provider or not project.permissions.allow_pull_request:
             raise RuntimeError("Pull-request provider or project permission is not configured")
-        body = draft_pr_description(summary=f"Resolves `{job.id}`.", problem=job.request_text or "Approved Orchestrator change.", changes=["See the local commit and file manifest."], validation=["See persisted validation runs."], risk="Review required.", limitations=["Draft PR; no automatic merge or completion."], files=[], proposal_id=job.context.get("proposal_id"), commits=[], base_sha=worktree.base_sha, head_sha=pushed_head)
+        with self.database.session() as session:
+            commit_items = list(session.scalars(select(Commit).where(Commit.job_id == job.id).order_by(Commit.created_at)).all())
+            change_items = list(session.scalars(select(FileChange).where(FileChange.job_id == job.id).order_by(FileChange.path)).all())
+            validation_items = list(session.scalars(select(ValidationRun).where(ValidationRun.job_id == job.id).order_by(ValidationRun.created_at)).all())
+        body = draft_pr_description(
+            summary=f"Resolves `{job.id}`.",
+            problem=job.request_text or "Approved Orchestrator change.",
+            changes=[item.summary or f"{item.change_type} {item.path}" for item in change_items],
+            validation=[f"{item.command}: {'passed' if item.passed else 'failed'}" for item in validation_items],
+            risk=str(job.context.get("risk", "Review required.")),
+            limitations=["Draft PR; no automatic merge or completion.", str(job.context.get("known_limitations", ""))],
+            files=[item.path for item in change_items],
+            proposal_id=job.context.get("proposal_id"),
+            commits=[f"{item.sha[:12]} {item.subject}" for item in commit_items],
+            base_sha=worktree.base_sha,
+            head_sha=pushed_head,
+        )
         pr = provider.create_draft_pull_request(title=f"Orchestrator: {job.id}", body=body, head=worktree.branch_name, base=repository.default_branch, idempotency_key=f"pr:{job.id}")
         if not pr.is_draft:
             raise RuntimeError("Provider returned a non-draft pull request; refusing to continue")

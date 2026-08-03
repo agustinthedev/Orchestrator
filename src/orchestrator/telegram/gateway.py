@@ -11,7 +11,12 @@ from sqlalchemy import select
 
 from orchestrator.config.models import AppConfig
 from orchestrator.database.engine import Database
-from orchestrator.database.models import TelegramInboundMessage, TelegramOutboundMessage
+from orchestrator.database.models import (
+    ConversationThread,
+    TelegramInboundMessage,
+    TelegramOutboundMessage,
+    utcnow,
+)
 from orchestrator.domain import Intent, JobStatus, classify_intent
 from orchestrator.jobs.service import JobService
 from orchestrator.observability.logging import get_logger
@@ -271,6 +276,15 @@ class TelegramGateway:
     ) -> str:
         message_id = await self.sender(chat_id, text) if self.sender else str(uuid.uuid4())
         with self.database.session() as session:
+            if thread_id:
+                thread = session.get(ConversationThread, thread_id)
+                if thread:
+                    thread.updated_at = utcnow()
+                    thread.job_id = job_id or thread.job_id
+                    thread.project_id = project_id or thread.project_id
+                    thread.repository_id = repository_id or thread.repository_id
+                else:
+                    session.add(ConversationThread(id=thread_id, chat_id=chat_id, project_id=project_id, repository_id=repository_id, job_id=job_id))
             session.add(
                 TelegramOutboundMessage(
                     chat_id=chat_id,

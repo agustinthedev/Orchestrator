@@ -140,6 +140,10 @@ def classify_intent(text: str, *, state: str | None = None, has_reply_context: b
         return Intent.ASK_ABOUT_CHANGE
     if re.search(r"\b(pipeline|build|workflow|ci|nightly|run failed|logs?)\b", value):
         return Intent.PIPELINE_ANALYSIS
+    if re.search(r"\b(status|health|jobs? waiting|what is running)\b", value):
+        return Intent.SHOW_STATUS
+    if re.search(r"\b(more diff detail|show the diff|diff details|patch)\b", value) and has_reply_context:
+        return Intent.REQUEST_DIFF_DETAIL
     if re.search(r"\b(schedule|scheduler|worktree|orchestrator|jobs? waiting|health|credential)\b", value):
         return Intent.GLOBAL_QUESTION
     if re.search(r"\b(review|analy[sz]e|find (the )?function|where is|how does|repository|repo)\b", value):
