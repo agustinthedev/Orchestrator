@@ -82,19 +82,23 @@ class GitManager:
         *,
         job_id: str,
         proposal_id: str,
+        branch_label: str = "",
         prefix: str = "fix",
     ) -> WorktreeInfo:
         self.worktrees_root.mkdir(parents=True, exist_ok=True)
         base_sha = self.base_sha(repository)
-        branch = sanitize_branch_name(proposal_id or job_id, prefix=prefix)
-        branch = f"{branch}-{job_id[:8]}"
+        branch_base = sanitize_branch_name(proposal_id or branch_label or "change", prefix=prefix)
+        branch_base = branch_base[:220].rstrip(".-/")
+        branch = branch_base
+        suffix = 2
         path = (self.worktrees_root / repository.id / job_id).resolve()
         if not is_within(path, self.worktrees_root.resolve()):
             raise GitError("Worktree path escaped configured worktree root")
         path.parent.mkdir(parents=True, exist_ok=True)
-        existing_branch = self.run(repository.local_path, "show-ref", "--verify", f"refs/heads/{branch}", check=False)
-        if existing_branch.returncode != 0:
-            self.run(repository.local_path, "branch", branch, base_sha)
+        while self.run(repository.local_path, "show-ref", "--verify", f"refs/heads/{branch}", check=False).returncode == 0:
+            branch = f"{branch_base}-{suffix}"
+            suffix += 1
+        self.run(repository.local_path, "branch", branch, base_sha)
         self.run(repository.local_path, "worktree", "add", str(path), branch)
         return WorktreeInfo(str(uuid.uuid4()), path, branch, base_sha)
 
@@ -102,7 +106,7 @@ class GitManager:
         return self.run(worktree_path, "rev-parse", "HEAD").stdout.strip()
 
     def changed_files(self, worktree_path: Path, base_sha: str) -> list[FileChangeInfo]:
-        result = self.run(worktree_path, "diff", "--numstat", "--find-renames", f"{base_sha}..HEAD")
+        result = self.run(worktree_path, "diff", "--numstat", "--find-renames", base_sha)
         changes: list[FileChangeInfo] = []
         for line in result.stdout.splitlines():
             parts = line.split("\t", 2)
@@ -118,6 +122,15 @@ class GitManager:
                 )
             )
         return changes
+
+    def commit_worktree(self, worktree_path: Path, message: str) -> bool:
+        """Finalize changes left unstaged by the disposable Codex process."""
+        status = self.run(worktree_path, "status", "--porcelain")
+        if not status.stdout.strip():
+            return False
+        self.run(worktree_path, "add", "--all")
+        self.run(worktree_path, "commit", "--message", message)
+        return True
 
     def status_changed_files(self, worktree_path: Path) -> list[str]:
         result = self.run(worktree_path, "status", "--porcelain")

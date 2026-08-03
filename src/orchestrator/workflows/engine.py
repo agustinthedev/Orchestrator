@@ -225,7 +225,14 @@ class OrchestratorEngine:
         if not worktree:
             self.jobs.transition(job.id, JobStatus.PREPARING_WORKTREE, {})
             proposal_id = str(job.context.get("proposal_id", ""))
-            info = self.git.create_worktree(repository, job_id=job.id, proposal_id=proposal_id, prefix=str(job.context.get("branch_prefix", "fix")))
+            branch_label = str(job.context.get("branch_label") or job.request_text or "change")
+            info = self.git.create_worktree(
+                repository,
+                job_id=job.id,
+                proposal_id=proposal_id,
+                branch_label=branch_label,
+                prefix=str(job.context.get("branch_prefix", "fix")),
+            )
             with self.database.session() as session:
                 session.add(Worktree(id=info.id, job_id=job.id, repository_id=repository.id, path=str(info.path), branch_name=info.branch, base_sha=info.base_sha))
                 current = session.get(Job, job.id)
@@ -257,10 +264,13 @@ class OrchestratorEngine:
         validation_results = await self._validate(job, project, worktree_path)
         if project.validation.required and any(not item.passed and not item.skipped for item in validation_results):
             raise RuntimeError("Required validation failed; push approval was not requested")
+        self.git.commit_worktree(worktree_path, "orchestrator: apply approved change")
         head = self.git.current_head(worktree_path)
         branch_name = worktree.branch_name if hasattr(worktree, "branch_name") else worktree.branch
         commits = self.git.commits_since(worktree_path, worktree.base_sha)
         changes = self.git.changed_files(worktree_path, worktree.base_sha)
+        if not commits and not changes:
+            raise RuntimeError("Codex completed without producing any repository changes")
         with self.database.session() as session:
             current = session.get(Job, job.id)
             if current:

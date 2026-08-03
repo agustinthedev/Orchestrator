@@ -22,8 +22,9 @@ from orchestrator.workflows.engine import OrchestratorEngine
 
 
 class FakeCodex:
-    def __init__(self, *, forbidden: bool = False) -> None:
+    def __init__(self, *, forbidden: bool = False, commit: bool = True) -> None:
         self.forbidden = forbidden
+        self.commit = commit
 
     def choose_model(self, project=None, *, task="default"):
         from orchestrator.config.models import ModelSpec
@@ -35,10 +36,11 @@ class FakeCodex:
         path = target / (".env" if self.forbidden else "src/change.py")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("value = 1\n", encoding="utf-8")
-        subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=target, check=True)
-        subprocess.run(["git", "config", "user.name", "Test"], cwd=target, check=True)
-        subprocess.run(["git", "add", "."], cwd=target, check=True)
-        subprocess.run(["git", "commit", "-m", "fix: add scoped change"], cwd=target, check=True, capture_output=True)
+        if self.commit:
+            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=target, check=True)
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=target, check=True)
+            subprocess.run(["git", "add", "."], cwd=target, check=True)
+            subprocess.run(["git", "commit", "-m", "fix: add scoped change"], cwd=target, check=True, capture_output=True)
         return CodexResult(
             execution_id="fake-execution",
             command=["fake-codex"],
@@ -109,7 +111,7 @@ async def test_write_job_uses_isolated_worktree_and_stops_before_push(tmp_path, 
         session.flush()
         session.add(Project(id="project", display_name="Project", repository_id="repo", scope=config.projects[0].scope.model_dump(), codex_config=config.projects[0].codex.model_dump(), validation_config=config.projects[0].validation.model_dump(), permissions=config.projects[0].permissions.model_dump(), pipelines={}))
         session.commit()
-    job = jobs.create_job(kind="implementation", idempotency_key="write-flow", project_id="project", repository_id="repo", request_text="Add a scoped change", context={"proposal_id": "FIX-001"})
+    job = jobs.create_job(kind="implementation", idempotency_key="write-flow", project_id="project", repository_id="repo", request_text="Add a scoped change", context={})
     claimed = jobs.claim_next()
     assert claimed is not None
     notifier = CaptureNotifier()
@@ -120,6 +122,7 @@ async def test_write_job_uses_isolated_worktree_and_stops_before_push(tmp_path, 
     assert stored.status == "awaiting_push_approval"
     assert stored.worktree_path
     assert Path(stored.worktree_path).resolve() != repo_path.resolve()
+    assert stored.branch_name == "fix/add-a-scoped-change"
     assert jobs.pending_push_approval(job.id) is not None
     assert any("Push it" in message for message in notifier.messages)
     assert git(repo_path, "rev-parse", "HEAD") == git(repo_path, "rev-parse", "origin/main")
@@ -136,6 +139,29 @@ async def test_write_job_uses_isolated_worktree_and_stops_before_push(tmp_path, 
 
         pull_request = session.query(PullRequest).filter(PullRequest.job_id == job.id).one()
         assert pull_request.is_draft
+
+
+@pytest.mark.asyncio
+async def test_write_job_finalizes_uncommitted_codex_changes(tmp_path, database, jobs) -> None:
+    repo_path = create_clone(tmp_path)
+    config = setup_config(tmp_path, repo_path)
+    with database.session() as session:
+        session.add(Repository(id="repo", display_name="Repo", local_path=str(repo_path), default_branch="main"))
+        session.flush()
+        session.add(Project(id="project", display_name="Project", repository_id="repo", scope=config.projects[0].scope.model_dump(), codex_config=config.projects[0].codex.model_dump(), validation_config=config.projects[0].validation.model_dump(), permissions=config.projects[0].permissions.model_dump(), pipelines={}))
+        session.commit()
+    job = jobs.create_job(kind="implementation", idempotency_key="write-flow-uncommitted", project_id="project", repository_id="repo", request_text="Add a scoped change", context={})
+    claimed = jobs.claim_next()
+    assert claimed is not None
+    engine = OrchestratorEngine(config, database, jobs, FakeCodex(commit=False), GitManager(config.git, config.runtime.worktrees_root), ValidationRunner(), notifier=CaptureNotifier())
+
+    await engine.handle_job(claimed)
+
+    stored = jobs.get(job.id)
+    assert stored is not None
+    assert stored.status == "awaiting_push_approval"
+    assert git(Path(stored.worktree_path), "log", "-1", "--format=%s") == "orchestrator: apply approved change"
+    assert git(Path(stored.worktree_path), "status", "--porcelain") == ""
 
 
 @pytest.mark.asyncio

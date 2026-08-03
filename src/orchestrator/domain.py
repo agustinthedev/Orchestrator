@@ -163,7 +163,7 @@ def classify_intent(text: str, *, state: str | None = None, has_reply_context: b
 
 
 def sanitize_branch_name(value: str, *, prefix: str = "change") -> str:
-    normalized = value.strip().replace("_", "-")
+    normalized = value.strip().casefold().replace("_", "-")
     normalized = re.sub(r"[^A-Za-z0-9./-]+", "-", normalized)
     normalized = re.sub(r"/{2,}", "/", normalized)
     normalized = re.sub(r"-{2,}", "-", normalized).strip(".-/")

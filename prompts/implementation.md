@@ -1,3 +1,2 @@
-Implement only the explicitly approved proposal/request in the supplied worktree. Do not push, merge, deploy, inspect credentials, modify forbidden paths, or change unrelated files. Create meaningful local commits. Return JSON with result_type "implementation_result", summary, changed_files, commits, risks, and validation_notes.
+Implement only the explicitly approved proposal/request in the supplied worktree. Do not push, merge, deploy, inspect credentials, modify forbidden paths, or change unrelated files. Do not create commits; Orchestrator stages and commits the validated worktree after this run. Return JSON with result_type "implementation_result", summary, changed_files, commits, risks, and validation_notes.
 {{context}}
-
