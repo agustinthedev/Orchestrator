@@ -18,6 +18,16 @@ def test_prompt_includes_context_once_and_keeps_the_exact_question(tmp_path: Pat
     assert prompt.startswith("Answer directly.")
 
 
+def test_question_prompt_puts_the_complete_request_before_context() -> None:
+    engine = object.__new__(OrchestratorEngine)
+
+    prompt = engine._question_prompt("Revisa la arquitectura y resume sus módulos.", "Context")
+
+    assert prompt.index("<user_request>") < prompt.index("Context")
+    assert "The request is not missing" in prompt
+    assert "Revisa la arquitectura y resume sus módulos." in prompt
+
+
 def test_structured_codex_output_is_validated() -> None:
     parsed = CodexRunner.parse_structured_output('{"result_type":"answer","answer":"safe"}')
     assert parsed is not None

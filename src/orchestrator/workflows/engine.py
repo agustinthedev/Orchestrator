@@ -199,7 +199,10 @@ class OrchestratorEngine:
             profile = None
             model = self.codex.choose_model(None, task="global_question")
             context = f"Orchestrator root: {cwd}\nSafe metadata only.\nQuestion: {job.request_text}"
-        prompt = self._prompt("global_question" if global_scope else "project_question", context)
+        prompt = self._question_prompt(
+            job.request_text or "",
+            self._prompt("global_question" if global_scope else "project_question", context),
+        )
         result = await self.codex.run(cwd=cwd, prompt=prompt, model=model, mode="read_only", profile_path=profile)
         self._record_codex(job, result, "global_question" if global_scope else "project_question")
         if await self._request_input_if_needed(job, result):
@@ -461,6 +464,18 @@ Return JSON with result_type in answer, analysis_result, proposals, needs_input,
         if "{{context}}" in template:
             return template.replace("{{context}}", context)
         return template + "\n\n" + context
+
+    @staticmethod
+    def _question_prompt(request_text: str, prompt: str) -> str:
+        return (
+            "You are answering one complete user request. The request is not missing and must be answered directly.\n"
+            "Do not ask the user to provide another or more specific request.\n\n"
+            "<user_request>\n"
+            f"{request_text}\n"
+            "</user_request>\n\n"
+            "Your response must fulfill the request above, using the repository as evidence.\n\n"
+            f"{prompt}"
+        )
 
     def _record_codex(self, job: Job, result: Any, phase: str) -> None:
         with self.database.session() as session:
