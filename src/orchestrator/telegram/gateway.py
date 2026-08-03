@@ -19,7 +19,12 @@ from orchestrator.database.models import (
     TelegramOutboundMessage,
     utcnow,
 )
-from orchestrator.domain import Intent, JobStatus, classify_intent
+from orchestrator.domain import Intent, JobStatus
+from orchestrator.intent_classifier import (
+    IntentClassification,
+    IntentClassifier,
+    NullIntentClassifier,
+)
 from orchestrator.jobs.service import JobService
 from orchestrator.observability.logging import get_logger
 from orchestrator.transcription.adapters import NullTranscriber, Transcriber
@@ -48,6 +53,7 @@ class InboundMessage:
     text: str | None = None
     reply_to_message_id: str | None = None
     voice_file_id: str | None = None
+    intent_override: Intent | None = None
 
 
 Sender = Callable[[str, str], Awaitable[str]]
@@ -72,6 +78,7 @@ class TelegramGateway:
         sender_with_options: SenderWithOptions | None = None,
         reactor: Reactor | None = None,
         job_creator: JobCreator | None = None,
+        classifier: IntentClassifier | None = None,
     ) -> None:
         self.config = config
         self.database = database
@@ -81,6 +88,7 @@ class TelegramGateway:
         self.sender_with_options = sender_with_options
         self.reactor = reactor
         self.job_creator = job_creator
+        self.classifier = classifier or NullIntentClassifier()
         self.connected = False
 
     def authorized(self, user_id: str, chat_id: str) -> bool:
@@ -160,7 +168,28 @@ class TelegramGateway:
         if context and context.job_id:
             current_job = self.jobs.get(context.job_id)
             state = current_job.status if current_job else None
-        intent = classify_intent(text, state=state, has_reply_context=context is not None)
+        if message.intent_override is not None:
+            classification = IntentClassification(
+                intent=message.intent_override,
+                project_id=context.project_id if context else None,
+                confidence=1,
+                reason="explicit_callback",
+            )
+        elif state == JobStatus.AWAITING_INPUT.value:
+            classification = IntentClassification(
+                intent=Intent.UNKNOWN,
+                project_id=context.project_id if context else None,
+                confidence=1,
+                reason="pending_input",
+            )
+        else:
+            classification = await self.classifier.classify(
+                text,
+                project_ids=[project.id for project in self.config.projects],
+                state=state,
+                has_reply_context=context is not None,
+            )
+        intent = classification.intent
         self._set_intent(message.update_id, intent.value)
         if context and context.job_id and state == JobStatus.AWAITING_INPUT.value:
             if re.search(r"\b(cancel|cancelar|cancelo|stop|abort|no|rechazo)\b", text.casefold()):
@@ -179,7 +208,7 @@ class TelegramGateway:
             Intent.TEST_REQUEST,
             Intent.REQUEST_REVISION,
         }:
-            project_id = context.project_id if context else self._find_project(text)
+            project_id = self._resolve_project(context, classification.project_id, text)
             repository_id = context.repository_id if context else None
             is_revision = intent == Intent.REQUEST_REVISION and context and context.job_id
             pending = self.jobs.create_job(
@@ -274,7 +303,7 @@ class TelegramGateway:
                 context={"target_job_id": context.job_id},
             )
             return await self.send("La pregunta quedó asociada al job y será respondida contra el diff local.", chat_id=message.chat_id, job_id=question_job.id, message_type="question_queued")
-        project_id = context.project_id if context else self._find_project(text)
+        project_id = self._resolve_project(context, classification.project_id, text)
         if intent in {
             Intent.PROJECT_QUESTION,
             Intent.CODE_ANALYSIS,
@@ -317,10 +346,30 @@ class TelegramGateway:
         if data.startswith("cancel_job:"):
             return await self.handle(InboundMessage(callback_id, chat_id, user_id, str(uuid.uuid4()), "Cancel", message_id))
         if data == "approve_push":
-            result = await self.handle(InboundMessage(callback_id, chat_id, user_id, str(uuid.uuid4()), "Push it", message_id))
+            result = await self.handle(
+                InboundMessage(
+                    callback_id,
+                    chat_id,
+                    user_id,
+                    str(uuid.uuid4()),
+                    "Push it",
+                    message_id,
+                    intent_override=Intent.APPROVE_PUSH,
+                )
+            )
             return result
         if data == "reject_push":
-            return await self.handle(InboundMessage(callback_id, chat_id, user_id, str(uuid.uuid4()), "Reject push", message_id))
+            return await self.handle(
+                InboundMessage(
+                    callback_id,
+                    chat_id,
+                    user_id,
+                    str(uuid.uuid4()),
+                    "Reject push",
+                    message_id,
+                    intent_override=Intent.REJECT_PUSH,
+                )
+            )
         return await self.send("Acción de callback no reconocida.", chat_id=chat_id, message_type="clarification")
 
     async def transcribe_voice(self, voice_file_id: str) -> str:
@@ -413,6 +462,15 @@ class TelegramGateway:
             if re.search(rf"\b{re.escape(project.id)}\b", text, re.IGNORECASE):
                 return project.id
         return None
+
+    def _resolve_project(self, context: ReplyContext | None, suggested: str | None, text: str) -> str | None:
+        if context and context.project_id:
+            return context.project_id
+        if suggested:
+            for project in self.config.projects:
+                if project.id.casefold() == suggested.casefold():
+                    return project.id
+        return self._find_project(text)
 
     @staticmethod
     def _is_pending_input_response(text: str) -> bool:

@@ -1,7 +1,18 @@
 import pytest
 
-from orchestrator.domain import JobStatus
+from orchestrator.domain import Intent, JobStatus
+from orchestrator.intent_classifier import IntentClassification
 from orchestrator.telegram.gateway import InboundMessage, ReplyMarkup, TelegramGateway
+
+
+class FixedClassifier:
+    def __init__(self, intent: Intent, project_id: str | None = None) -> None:
+        self.intent = intent
+        self.project_id = project_id
+
+    async def classify(self, _text, *, project_ids, state, has_reply_context):
+        del project_ids, state, has_reply_context
+        return IntentClassification(intent=self.intent, project_id=self.project_id, confidence=1)
 
 
 @pytest.mark.asyncio
@@ -31,11 +42,42 @@ async def test_natural_message_creates_global_job(database, jobs, config, monkey
     async def reactor(chat_id: str, message_id: str, emoji: str) -> None:
         reactions.append((chat_id, message_id, emoji))
 
-    gateway = TelegramGateway(config, database, jobs, reactor=reactor, job_creator=creator)
+    gateway = TelegramGateway(
+        config,
+        database,
+        jobs,
+        reactor=reactor,
+        classifier=FixedClassifier(Intent.GLOBAL_QUESTION),
+        job_creator=creator,
+    )
     reply = await gateway.handle(InboundMessage("update-1", "7", "42", "message-1", "How does the scheduler work?"))
     assert reply is None
     assert created == ["GLOBAL_QUESTION"]
     assert reactions == [("7", "message-1", "👀")]
+
+
+@pytest.mark.asyncio
+async def test_model_classification_can_route_project_without_keyword_matching(database, jobs, config, monkeypatch) -> None:
+    monkeypatch.setenv("TELEGRAM_ALLOWED_USER_IDS", "42")
+    monkeypatch.setenv("TELEGRAM_ALLOWED_CHAT_IDS", "7")
+    created: list[tuple[str, str | None]] = []
+
+    async def creator(intent: str, project_id: str | None, repository_id: str | None, text: str, update_id: str) -> str:
+        del repository_id, text, update_id
+        created.append((intent, project_id))
+        return "job-2"
+
+    gateway = TelegramGateway(
+        config,
+        database,
+        jobs,
+        classifier=FixedClassifier(Intent.PROJECT_QUESTION, project_id="project"),
+        job_creator=creator,
+    )
+    reply = await gateway.handle(InboundMessage("update-2", "7", "42", "message-2", "¿Qué ves acá?"))
+
+    assert reply is not None
+    assert created == [("PROJECT_QUESTION", "project")]
 
 
 @pytest.mark.asyncio
@@ -98,7 +140,13 @@ async def test_voice_mutation_requires_confirmation(database, jobs, seeded_confi
         sent_options.append((chat_id, text, parse_mode, reply_markup))
         return "voice-confirmation-message"
 
-    gateway = TelegramGateway(seeded_config, database, jobs, sender_with_options=sender_with_options)
+    gateway = TelegramGateway(
+        seeded_config,
+        database,
+        jobs,
+        sender_with_options=sender_with_options,
+        classifier=FixedClassifier(Intent.FEATURE_REQUEST, project_id="project"),
+    )
     first = await gateway.handle(InboundMessage("voice-1", "7", "42", "message-voice", "Add a feature in project", voice_file_id="voice-file"))
     assert first is not None
     assert sent_options[0][2] == "HTML"

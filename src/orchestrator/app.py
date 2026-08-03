@@ -15,6 +15,7 @@ from orchestrator.config.models import AppConfig
 from orchestrator.database.engine import Database, create_database
 from orchestrator.database.models import CredentialsMetadata, Project, Repository, utcnow
 from orchestrator.git.manager import GitManager
+from orchestrator.intent_classifier import NullIntentClassifier, OpenAIIntentClassifier
 from orchestrator.jobs.service import JobService
 from orchestrator.observability.logging import configure_logging, get_logger
 from orchestrator.scheduling.scheduler import SchedulerService
@@ -43,7 +44,24 @@ class Application:
             if config.telegram.transcription.provider == "openai"
             else NullTranscriber()
         )
-        self.telegram = TelegramGateway(config, self.database, self.jobs, transcriber=transcriber, job_creator=self._create_message_job)
+        classifier = (
+            OpenAIIntentClassifier(
+                config.telegram.intent_classification.api_key_env,
+                config.telegram.intent_classification.model,
+                min_confidence=config.telegram.intent_classification.min_confidence,
+                max_output_tokens=config.telegram.intent_classification.max_output_tokens,
+            )
+            if config.telegram.intent_classification.provider == "openai"
+            else NullIntentClassifier()
+        )
+        self.telegram = TelegramGateway(
+            config,
+            self.database,
+            self.jobs,
+            transcriber=transcriber,
+            classifier=classifier,
+            job_creator=self._create_message_job,
+        )
         self.engine = OrchestratorEngine(config, self.database, self.jobs, self.codex, self.git, self.validator, notifier=self.telegram)
         self.workers = WorkerPool(self.jobs, self.engine.handle_job, count=config.workers.max_concurrent_codex_runs, poll_interval=config.workers.poll_interval_seconds)
         self.scheduler = SchedulerService(config, self.database, self.jobs, self._scheduled_workflow)

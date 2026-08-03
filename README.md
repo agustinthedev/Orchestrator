@@ -30,7 +30,7 @@ The implementation intentionally keeps workflow control outside Codex. Codex run
 py -3 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-python -m pip install -e ".[dev,telegram]"
+python -m pip install -e ".[dev,telegram,transcription]"
 Copy-Item .env.example .env
 ```
 
@@ -77,9 +77,11 @@ Schedules use five-field cron expressions and the configured timezone (default `
 
 Use `provider: github` with `owner`, `repository`, and `GITHUB_TOKEN`, or `provider: azure_devops` with organization, project, repository ID, and `AZURE_DEVOPS_PAT`. Credentials are read only when a provider request is made. Provider clients use request timeouts, return actionable errors, detect existing open PRs by source branch, and verify the provider response is a draft.
 
-### Transcription
+### Intent classification and transcription
 
-Set `telegram.transcription.provider` to `openai`, configure the model and `OPENAI_API_KEY`, and install the `transcription` extra. Use `none` to disable voice transcription. Secrets are never requested through Telegram.
+Incoming messages are classified by the configured OpenAI model using structured output; the classifier selects an intent and, when applicable, one of the configured project IDs. Configure `telegram.intent_classification.model`, its confidence threshold, and `OPENAI_API_KEY`. Classification failures or ambiguous results become clarification messages and do not create worker jobs.
+
+Set `telegram.transcription.provider` to `openai` to enable voice transcription; both features use the `transcription` extra and `OPENAI_API_KEY`. Use `none` to disable voice transcription. Secrets are never requested through Telegram.
 
 ## Run manually
 
@@ -129,4 +131,3 @@ Tests mock Telegram/provider/Codex boundaries and do not need real external cred
 - The current worker defaults to a single persistent SQLite queue and conservative write concurrency. More advanced cross-process locking can be added without changing the domain state machine.
 - Semantic proposal revalidation and richer inline-button/callback flows are extension points; security-sensitive approvals remain programmatic and reply-bound.
 - Validation commands are trusted project configuration. Keep them reviewed and do not configure commands that deploy, inspect credentials, or mutate production.
-
