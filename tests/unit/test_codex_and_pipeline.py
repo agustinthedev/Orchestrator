@@ -32,6 +32,11 @@ def test_structured_codex_output_is_extracted_from_jsonl_agent_message() -> None
     assert parsed.answer == "safe"
 
 
+def test_plain_codex_agent_message_is_available_as_fallback() -> None:
+    output = '{"type":"item.completed","item":{"type":"agent_message","text":"Readable answer"}}'
+    assert CodexRunner.extract_agent_message(output) == "Readable answer"
+
+
 def test_model_routing_rejects_unconfigured_models() -> None:
     runner = CodexRunner(CodexSettings(default_model=ModelSpec(name="luna", reasoning_effort="high"), allowed_models=["luna"]))
     assert runner.choose_model().name == "luna"

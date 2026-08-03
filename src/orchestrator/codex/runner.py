@@ -51,6 +51,7 @@ class CodexResult:
     duration_seconds: float
     session_id: str | None
     model: ModelSpec
+    agent_message: str | None = None
 
 
 class CodexRunner:
@@ -123,6 +124,7 @@ class CodexRunner:
         stdout = redact_secrets(stdout_bytes.decode(errors="replace"))
         stderr = redact_secrets(stderr_bytes.decode(errors="replace"))
         structured = self.parse_structured_output(stdout)
+        agent_message = self.extract_agent_message(stdout)
         session_id = structured.session_id if structured else None
         return CodexResult(
             execution_id=execution_id,
@@ -134,6 +136,7 @@ class CodexRunner:
             duration_seconds=time.monotonic() - started,
             session_id=session_id,
             model=model,
+            agent_message=agent_message,
         )
 
     @staticmethod
@@ -160,4 +163,20 @@ class CodexRunner:
                     return StructuredCodexResult.model_validate(value)
             except (json.JSONDecodeError, ValidationError):
                 continue
+        return None
+
+    @staticmethod
+    def extract_agent_message(stdout: str) -> str | None:
+        """Return the final human-facing message from Codex JSONL output."""
+        for line in reversed(stdout.splitlines()):
+            try:
+                event = json.loads(line.strip())
+            except json.JSONDecodeError:
+                continue
+            item = event.get("item") if isinstance(event, dict) else None
+            if not isinstance(item, dict) or item.get("type") != "agent_message":
+                continue
+            message = item.get("text")
+            if isinstance(message, str) and message.strip():
+                return message.strip()
         return None

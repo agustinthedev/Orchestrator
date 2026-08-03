@@ -206,7 +206,7 @@ class OrchestratorEngine:
             return
         if result.exit_code != 0:
             raise RuntimeError(result.stderr[-1000:])
-        answer = result.structured.answer if result.structured else result.stdout[-4000:]
+        answer = result.structured.answer if result.structured else result.agent_message
         await self.notifier.send(answer or "No se obtuvo una respuesta estructurada.", chat_id=self._conversation_chat_id(), message_type="answer", project_id=project.id if project else None, job_id=job.id)
         self.jobs.transition(job.id, JobStatus.COMPLETED, {})
 
@@ -288,7 +288,7 @@ class OrchestratorEngine:
         self._record_codex(job, result, "diff_explanation")
         if result.exit_code != 0:
             raise RuntimeError(result.stderr[-1000:])
-        answer = result.structured.answer if result.structured else result.stdout[-4000:]
+        answer = result.structured.answer if result.structured else result.agent_message
         await self.notifier.send(
             answer or "No se obtuvo una explicación estructurada.",
             chat_id=self._conversation_chat_id(),
