@@ -45,6 +45,7 @@ ALLOWED_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
         JobStatus.FAILED,
         JobStatus.CANCELLED,
         JobStatus.NEEDS_REVIEW,
+        JobStatus.PUSHING,
     },
     JobStatus.AWAITING_INPUT: {JobStatus.INPUT_RECEIVED, JobStatus.EXPIRED, JobStatus.CANCELLED},
     JobStatus.INPUT_RECEIVED: {JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.CANCELLED},
@@ -74,7 +75,7 @@ ALLOWED_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
         JobStatus.CANCELLED,
         JobStatus.EXPIRED,
     },
-    JobStatus.REVISION_REQUESTED: {JobStatus.IMPLEMENTING_REVISION, JobStatus.CANCELLED},
+    JobStatus.REVISION_REQUESTED: {JobStatus.IMPLEMENTING_REVISION, JobStatus.QUEUED, JobStatus.CANCELLED},
     JobStatus.IMPLEMENTING_REVISION: {
         JobStatus.VALIDATING,
         JobStatus.AWAITING_INPUT,
@@ -203,4 +204,3 @@ def redact_secrets(text: str, secret_values: Iterable[str] = ()) -> str:
             redacted = redacted.replace(secret, "[REDACTED]")
     redacted = re.sub(r"(?i)(token|password|pat|api[_-]?key)\s*[:=]\s*[^\s,;]+", r"\1=[REDACTED]", redacted)
     return redacted
-

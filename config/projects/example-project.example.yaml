@@ -1,0 +1,23 @@
+projects:
+  - id: example-project
+    display_name: Example Project
+    repository: example-repository
+    working_directory: .
+    codex:
+      profile_path: C:/orchestrator/profiles/example-project
+      enabled: true
+    scope:
+      allowed_read_paths: [src, tests]
+      allowed_write_paths: [src, tests]
+      forbidden_paths: [.env, infrastructure, credentials]
+    validation:
+      commands:
+        - python -m pytest
+      required: true
+    permissions:
+      allow_read: true
+      allow_changes: true
+      allow_push: true
+      allow_pull_request: true
+      allow_merge: false
+

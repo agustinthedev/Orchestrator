@@ -133,6 +133,21 @@ class JobService:
             )
             session.commit()
 
+    def update_context(self, job_id: str, values: dict[str, Any]) -> None:
+        with self.database.session() as session:
+            job = session.get(Job, job_id)
+            if not job:
+                raise KeyError(job_id)
+            job.context = {**(job.context or {}), **values}
+            job.updated_at = utcnow()
+            session.commit()
+
+    def pending_proposals(self, job_id: str) -> list[Proposal]:
+        with self.database.session() as session:
+            return session.scalars(
+                select(Proposal).where(Proposal.job_id == job_id, Proposal.status == "pending")
+            ).all()
+
     def add_question(
         self,
         job_id: str,
@@ -248,4 +263,3 @@ class JobService:
                 counts["requeued"] = counts.get("requeued", 0) + 1
             session.commit()
         return counts
-

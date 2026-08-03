@@ -1,0 +1,11 @@
+repositories:
+  - id: example-repository
+    display_name: Example Repository
+    local_path: C:/repos/example-repository
+    provider: github
+    default_branch: main
+    github:
+      owner: example-owner
+      repository: example-repository
+      token_env: GITHUB_TOKEN
+

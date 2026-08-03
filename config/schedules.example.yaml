@@ -1,0 +1,8 @@
+schedules:
+  - id: example-daily-review
+    project: example-project
+    workflow: daily_code_review
+    cron: "0 8 * * 1-5"
+    enabled: false
+    timezone: America/Montevideo
+
