@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
@@ -9,7 +9,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 def utcnow() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class Base(DeclarativeBase):
@@ -332,4 +332,3 @@ class CredentialsMetadata(Base):
 Index("ix_proposal_job_status", Proposal.job_id, Proposal.status)
 Index("ix_push_approval_job_status", PushApproval.job_id, PushApproval.status)
 UniqueConstraint(ProposalApproval.proposal_id, ProposalApproval.telegram_user_id, name="uq_proposal_user")
-

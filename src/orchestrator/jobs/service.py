@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import select, update
-from sqlalchemy.exc import IntegrityError
 
 from orchestrator.database.engine import Database
 from orchestrator.database.models import (
@@ -188,7 +187,7 @@ class JobService:
             )
             session.commit()
 
-    def create_push_approval(self, job_id: str, head_sha: str, user_id: str, message_id: str | None) -> PushApproval:
+    def create_push_approval(self, job_id: str, head_sha: str, user_id: str, message_id: str | None = None) -> PushApproval:
         with self.database.session() as session:
             session.query(PushApproval).filter(
                 PushApproval.job_id == job_id, PushApproval.status == "pending"
@@ -257,9 +256,10 @@ class JobService:
                 )
             ).all()
             for job in jobs:
+                previous_status = job.status
                 job.status = JobStatus.QUEUED.value
                 job.error = "Recovered after application restart"
-                self._event(session, job.id, "JOB_RECOVERED", {"previous_status": job.status})
+                self._event(session, job.id, "JOB_RECOVERED", {"previous_status": previous_status})
                 counts["requeued"] = counts.get("requeued", 0) + 1
             session.commit()
         return counts

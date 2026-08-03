@@ -4,7 +4,6 @@ import subprocess
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 from orchestrator.config.models import GitSettings, RepositoryConfig, ScopeConfig, is_within
 from orchestrator.domain import paths_are_allowed, sanitize_branch_name

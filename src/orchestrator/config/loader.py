@@ -8,9 +8,6 @@ import yaml
 
 from orchestrator.config.models import (
     AppConfig,
-    ProjectConfig,
-    RepositoryConfig,
-    ScheduleConfig,
 )
 
 

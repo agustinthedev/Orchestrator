@@ -3,15 +3,15 @@ from __future__ import annotations
 import os
 import re
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from sqlalchemy import select
 
 from orchestrator.config.models import AppConfig
 from orchestrator.database.engine import Database
-from orchestrator.database.models import Job, TelegramInboundMessage, TelegramOutboundMessage
+from orchestrator.database.models import TelegramInboundMessage, TelegramOutboundMessage
 from orchestrator.domain import Intent, JobStatus, classify_intent
 from orchestrator.jobs.service import JobService
 from orchestrator.observability.logging import get_logger

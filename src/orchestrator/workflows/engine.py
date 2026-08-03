@@ -8,7 +8,7 @@ from typing import Any, Protocol
 from sqlalchemy import select
 
 from orchestrator.codex.runner import CodexRunner
-from orchestrator.config.models import AppConfig, ProjectConfig, RepositoryConfig, ScheduleConfig
+from orchestrator.config.models import AppConfig, ProjectConfig, RepositoryConfig
 from orchestrator.database.engine import Database
 from orchestrator.database.models import (
     CodexExecution,
@@ -23,7 +23,7 @@ from orchestrator.database.models import (
     utcnow,
 )
 from orchestrator.domain import JobStatus
-from orchestrator.git.manager import GitError, GitManager
+from orchestrator.git.manager import GitManager
 from orchestrator.jobs.service import JobService
 from orchestrator.observability.logging import get_logger
 from orchestrator.pipelines.analyzer import PipelineAnalyzer

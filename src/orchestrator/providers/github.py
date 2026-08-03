@@ -51,6 +51,8 @@ class GitHubProvider:
     def _find_by_head(self, head: str) -> dict[str, Any] | None:
         response = self._request("GET", f"{self.base_url}/pulls", params={"state": "open", "head": f"{self.owner}:{head}"})
         items = response.json()
+        if not isinstance(items, list):
+            return None
         return items[0] if items else None
 
     def get_pull_request(self, provider_id: str) -> dict[str, Any]:
@@ -70,4 +72,3 @@ class GitHubProvider:
     def pipeline_logs(self, run_id: str, *, max_chars: int = 20000) -> str:
         response = self._request("GET", f"{self.base_url}/actions/runs/{run_id}/logs")
         return response.text[:max_chars]
-

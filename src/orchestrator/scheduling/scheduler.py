@@ -1,17 +1,15 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from datetime import datetime
-from typing import Awaitable, Callable
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from sqlalchemy import select
 
 from orchestrator.config.models import AppConfig, ScheduleConfig
 from orchestrator.database.engine import Database
 from orchestrator.database.models import Schedule
 from orchestrator.jobs.service import JobService
-
 
 WorkflowFactory = Callable[[ScheduleConfig], Awaitable[None]]
 

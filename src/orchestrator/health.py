@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import shutil
-from pathlib import Path
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from orchestrator.database.engine import Database
 

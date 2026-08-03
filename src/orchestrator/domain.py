@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from enum import StrEnum
-from pathlib import Path, PurePosixPath
-from typing import Iterable
+from pathlib import PurePosixPath
 
 
 class JobStatus(StrEnum):
@@ -171,7 +171,9 @@ def sanitize_branch_name(value: str, *, prefix: str = "change") -> str:
 def normalize_relative_path(path: str) -> str:
     candidate = path.replace("\\", "/").strip()
     candidate = str(PurePosixPath(candidate))
-    return "." if candidate in {"", "."} else candidate.lstrip("./")
+    while candidate.startswith("./"):
+        candidate = candidate[2:]
+    return "." if candidate in {"", "."} else candidate
 
 
 def path_matches(path: str, configured: str) -> bool:
