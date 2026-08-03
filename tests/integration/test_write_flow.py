@@ -122,7 +122,7 @@ async def test_write_job_uses_isolated_worktree_and_stops_before_push(tmp_path, 
     assert stored.status == "awaiting_push_approval"
     assert stored.worktree_path
     assert Path(stored.worktree_path).resolve() != repo_path.resolve()
-    assert stored.branch_name == "fix/add-a-scoped-change"
+    assert stored.branch_name == "fix/add-feature"
     assert jobs.pending_push_approval(job.id) is not None
     assert any("Push it" in message for message in notifier.messages)
     assert git(repo_path, "rev-parse", "HEAD") == git(repo_path, "rev-parse", "origin/main")
