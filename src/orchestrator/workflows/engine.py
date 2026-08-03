@@ -184,7 +184,8 @@ class OrchestratorEngine:
         self._ensure_write_allowed(project)
         if not await self._revalidate_stale_proposal(job, project, repository):
             return
-        worktree: Any = self._worktree_for(job.id)
+        target_job_id = str(job.context.get("target_job_id", ""))
+        worktree: Any = self._worktree_for(target_job_id or job.id)
         if not worktree:
             self.jobs.transition(job.id, JobStatus.PREPARING_WORKTREE, {})
             proposal_id = str(job.context.get("proposal_id", ""))
@@ -271,7 +272,8 @@ class OrchestratorEngine:
 
     async def push(self, job: Job) -> None:
         project, repository = self._project_repository(job)
-        worktree = self._worktree_for(job.id)
+        target_job_id = str(job.context.get("target_job_id", ""))
+        worktree = self._worktree_for(target_job_id or job.id)
         if not worktree:
             raise RuntimeError("No worktree associated with push job")
         approval = self._approved_push(job.id)
@@ -397,6 +399,7 @@ Allowed write paths: {project.scope.allowed_write_paths}
 Forbidden paths: {project.scope.forbidden_paths}
 Original request: {job.request_text}
 Approved proposal: {job.context.get('proposal_id', '')}
+User answers: {job.context.get('user_answers', [])}
 Current phase: {job.phase or job.status}
 Base SHA: {base_sha or 'unknown'}
 Validation requirements: {project.validation.commands}

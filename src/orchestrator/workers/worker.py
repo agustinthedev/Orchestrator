@@ -35,6 +35,7 @@ class WorkerPool:
 
     async def _loop(self, index: int) -> None:
         while not self._stop.is_set():
+            self.jobs.expire_pending_interactions()
             job = self.jobs.claim_next()
             if not job:
                 await asyncio.sleep(self.poll_interval)

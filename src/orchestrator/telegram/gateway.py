@@ -123,7 +123,8 @@ class TelegramGateway:
                 self.jobs.transition(context.job_id, JobStatus.CANCELLED, {"reason": "user_cancelled_input"})
                 return await self.send("Cancelé el job pendiente.", chat_id=message.chat_id, job_id=context.job_id, message_type="job_cancelled")
             self.jobs.add_input(context.job_id, text, telegram_user_id=message.user_id, telegram_message_id=message.message_id)
-            self.jobs.update_context(context.job_id, {"user_answers": [text], "voice_confirmation_pending": False})
+            answers = list(current_job.context.get("user_answers", [])) if current_job else []
+            self.jobs.update_context(context.job_id, {"user_answers": [*answers, text], "voice_confirmation_pending": False})
             self.jobs.transition(context.job_id, JobStatus.INPUT_RECEIVED, {"telegram_user_id": message.user_id})
             self.jobs.transition(context.job_id, JobStatus.QUEUED, {"reason": "user_input_received"})
             return await self.send("Respuesta registrada; reanudaré el job con este contexto.", chat_id=message.chat_id, job_id=context.job_id, message_type="input_received")
@@ -136,13 +137,19 @@ class TelegramGateway:
         }:
             project_id = context.project_id if context else self._find_project(text)
             repository_id = context.repository_id if context else None
+            is_revision = intent == Intent.REQUEST_REVISION and context and context.job_id
             pending = self.jobs.create_job(
-                kind=intent.value,
+                kind="implementation" if is_revision else intent.value,
                 idempotency_key=f"voice-confirmation:{message.update_id}",
                 project_id=project_id,
                 repository_id=repository_id,
                 request_text=text,
-                context={"voice_confirmation_pending": True, "transcript": text},
+                context={
+                    "voice_confirmation_pending": True,
+                    "transcript": text,
+                    "revision_request": text if is_revision else None,
+                    "target_job_id": context.job_id if is_revision and context else None,
+                },
                 status=JobStatus.AWAITING_INPUT,
             )
             return await self.send(

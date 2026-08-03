@@ -53,6 +53,7 @@ class JobService:
                 status=JobStatus.CREATED.value,
                 request_text=request_text,
                 context=context or {},
+                expires_at=(utcnow() + timedelta(minutes=self.approval_ttl_minutes)) if status in {JobStatus.AWAITING_INPUT, JobStatus.AWAITING_PROPOSAL_APPROVAL, JobStatus.AWAITING_PUSH_APPROVAL} else None,
             )
             session.add(job)
             session.flush()
@@ -275,3 +276,25 @@ class JobService:
                 counts["requeued"] = counts.get("requeued", 0) + 1
             session.commit()
         return counts
+
+    def expire_pending_interactions(self) -> int:
+        now = utcnow()
+        expired = 0
+        with self.database.session() as session:
+            jobs = session.scalars(
+                select(Job).where(
+                    Job.status.in_([
+                        JobStatus.AWAITING_INPUT.value,
+                        JobStatus.AWAITING_PROPOSAL_APPROVAL.value,
+                        JobStatus.AWAITING_PUSH_APPROVAL.value,
+                    ]),
+                    Job.expires_at.is_not(None),
+                    Job.expires_at < now,
+                )
+            ).all()
+            for job in jobs:
+                job.status = JobStatus.EXPIRED.value
+                self._event(session, job.id, "JOB_EXPIRED", {"expired_at": now.isoformat()})
+                expired += 1
+            session.commit()
+        return expired

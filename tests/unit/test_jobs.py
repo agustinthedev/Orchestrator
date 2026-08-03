@@ -30,3 +30,15 @@ def test_push_approval_is_bound_to_head_and_can_be_invalidated(jobs) -> None:
     assert approved.status == "approved"
     jobs.invalidate_push_approvals(job.id)
     assert jobs.pending_push_approval(job.id) is None
+
+
+def test_expired_interactions_are_persistently_expired(jobs) -> None:
+    job = jobs.create_job(kind="question", idempotency_key="expires", status=JobStatus.AWAITING_INPUT)
+    with jobs.database.session() as session:
+        from orchestrator.database.models import Job, utcnow
+
+        record = session.get(Job, job.id)
+        record.expires_at = utcnow()
+        session.commit()
+    assert jobs.expire_pending_interactions() == 1
+    assert jobs.get(job.id).status == JobStatus.EXPIRED.value
