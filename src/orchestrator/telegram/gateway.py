@@ -282,13 +282,14 @@ class TelegramGateway:
             return await self.send("Registré la revisión y anulé la aprobación anterior. Se volverá a validar el worktree.", chat_id=message.chat_id, job_id=context.job_id, message_type="revision_requested")
         if intent in {Intent.ASK_ABOUT_CHANGE, Intent.REQUEST_DIFF_DETAIL} and context and context.job_id:
             self.jobs.add_input(context.job_id, text, telegram_user_id=message.user_id, telegram_message_id=message.message_id)
+            target_job_id = self._root_change_job_id(context.job_id)
             question_job = self.jobs.create_job(
                 kind="change_question",
-                idempotency_key=f"change-question:{context.job_id}:{message.message_id}",
+                idempotency_key=f"change-question:{target_job_id}:{message.message_id}",
                 project_id=context.project_id,
                 repository_id=context.repository_id,
                 request_text=text,
-                context={"target_job_id": context.job_id},
+                context={"target_job_id": target_job_id},
             )
             return await self.send("La pregunta quedó asociada al cambio y será respondida contra el diff local.", chat_id=message.chat_id, job_id=question_job.id, message_type="question_queued")
         if intent == Intent.APPROVE_PROPOSAL and context and context.job_id:
@@ -410,6 +411,17 @@ class TelegramGateway:
                 if inbound:
                     return inbound.chat_id, inbound.message_id
         return None
+
+    def _root_change_job_id(self, job_id: str) -> str:
+        current_id = job_id
+        visited: set[str] = set()
+        while current_id and current_id not in visited:
+            visited.add(current_id)
+            current = self.jobs.get(current_id)
+            if not current or current.kind != "change_question":
+                return current_id
+            current_id = str(current.context.get("target_job_id") or "")
+        return job_id
 
     async def handle_callback(self, callback_id: str, data: str, *, user_id: str, chat_id: str, message_id: str) -> str | None:
         if data.startswith("confirm_job:"):

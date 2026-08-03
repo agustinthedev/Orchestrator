@@ -287,6 +287,11 @@ class OrchestratorEngine:
     async def change_question(self, job: Job) -> None:
         target_id = self._target_job_id(job.context)
         target = self.jobs.get(target_id)
+        visited: set[str] = set()
+        while target and target.kind == "change_question" and target.id not in visited:
+            visited.add(target.id)
+            target_id = self._target_job_id(target.context)
+            target = self.jobs.get(target_id)
         if not target:
             raise ValueError("Target change job no longer exists")
         project, repository = self._project_repository(target)
@@ -314,7 +319,8 @@ class OrchestratorEngine:
             message_type="diff_explanation",
             project_id=project.id,
             repository_id=repository.id,
-            job_id=job.id,
+            job_id=target.id,
+            interaction_id=job.id,
             branch_name=worktree.branch_name,
             head_sha=self.git.current_head(worktree_path),
         )

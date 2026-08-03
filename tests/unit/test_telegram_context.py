@@ -66,6 +66,17 @@ async def test_diff_question_reply_is_not_treated_as_push_approval(database, job
     )
 
     assert response is not None
+    second_response = await gateway.handle(
+        InboundMessage(
+            "diff-question-follow-up",
+            "7",
+            "42",
+            "question-message-2",
+            "Y qué se modificó exactamente?",
+            reply_to_message_id=response,
+        )
+    )
+    assert second_response is not None
     with database.session() as session:
         from sqlalchemy import select
 
