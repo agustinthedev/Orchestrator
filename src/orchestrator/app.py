@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -193,6 +194,16 @@ class Application:
             text = message.text
             voice_file_id = None
             audio = message.voice or message.audio
+            inbound = InboundMessage(
+                update_id=str(update.update_id),
+                chat_id=str(update.effective_chat.id),
+                user_id=str(update.effective_user.id),
+                message_id=str(message.message_id),
+                text=text,
+                reply_to_message_id=str(message.reply_to_message.message_id) if message.reply_to_message else None,
+                voice_file_id=str(audio.file_id) if audio else None,
+            )
+            await self.telegram.acknowledge(inbound)
             if audio:
                 voice_file_id = str(audio.file_id)
                 file = await self._telegram_app.bot.get_file(audio.file_id)
@@ -202,7 +213,7 @@ class Application:
                 audio_path = temporary / f"voice-{audio.file_unique_id}{extension}"
                 await file.download_to_drive(custom_path=str(audio_path))
                 text = await self.telegram.transcriber.transcribe(audio_path)
-            await self.telegram.handle(InboundMessage(update_id=str(update.update_id), chat_id=str(update.effective_chat.id), user_id=str(update.effective_user.id), message_id=str(message.message_id), text=text, reply_to_message_id=str(message.reply_to_message.message_id) if message.reply_to_message else None, voice_file_id=voice_file_id))
+            await self.telegram.handle(replace(inbound, text=text, voice_file_id=voice_file_id, acknowledged=True))
 
         self._telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_update))
         self._telegram_app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_update))

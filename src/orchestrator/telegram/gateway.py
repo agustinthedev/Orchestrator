@@ -54,6 +54,7 @@ class InboundMessage:
     reply_to_message_id: str | None = None
     voice_file_id: str | None = None
     intent_override: Intent | None = None
+    acknowledged: bool = False
 
 
 Sender = Callable[[str, str], Awaitable[str]]
@@ -352,7 +353,7 @@ class TelegramGateway:
         return await self.send("Recibido, pero el worker todavía no está disponible.", chat_id=message.chat_id, message_type="status")
 
     async def _react_to_message(self, message: InboundMessage, *, job_id: str | None = None) -> None:
-        if not self.reactor:
+        if message.acknowledged or not self.reactor:
             return
         try:
             await self.reactor(message.chat_id, message.message_id, ACK_REACTION)
@@ -361,6 +362,11 @@ class TelegramGateway:
                 "Could not react to Telegram message",
                 extra={"event_type": "TELEGRAM_REACTION_FAILURE", "job_id": job_id},
             )
+
+    async def acknowledge(self, message: InboundMessage) -> None:
+        """Send the immediate Telegram receipt before any expensive processing."""
+        if self.authorized(message.user_id, message.chat_id):
+            await self._react_to_message(message)
 
     async def handle_callback(self, callback_id: str, data: str, *, user_id: str, chat_id: str, message_id: str) -> str | None:
         if data.startswith("confirm_job:"):

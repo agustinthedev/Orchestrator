@@ -188,12 +188,15 @@ async def test_voice_mutation_requires_confirmation(database, jobs, seeded_confi
     monkeypatch.setenv("TELEGRAM_ALLOWED_CHAT_IDS", "7")
     sent_options: list[tuple[str, str, str | None, ReplyMarkup | None]] = []
     reactions: list[tuple[str, str, str]] = []
+    events: list[str] = []
 
     async def sender_with_options(chat_id: str, text: str, parse_mode: str | None, reply_markup: ReplyMarkup | None) -> str:
+        events.append("response")
         sent_options.append((chat_id, text, parse_mode, reply_markup))
         return "voice-confirmation-message"
 
     async def reactor(chat_id: str, message_id: str, emoji: str) -> None:
+        events.append("reaction")
         reactions.append((chat_id, message_id, emoji))
 
     gateway = TelegramGateway(
@@ -204,7 +207,19 @@ async def test_voice_mutation_requires_confirmation(database, jobs, seeded_confi
         reactor=reactor,
         classifier=FixedClassifier(Intent.FEATURE_REQUEST, project_id="project"),
     )
-    first = await gateway.handle(InboundMessage("voice-1", "7", "42", "message-voice", "Add a feature in project", voice_file_id="voice-file"))
+    inbound = InboundMessage("voice-1", "7", "42", "message-voice", "Add a feature in project", voice_file_id="voice-file")
+    await gateway.acknowledge(inbound)
+    first = await gateway.handle(
+        InboundMessage(
+            "voice-1",
+            "7",
+            "42",
+            "message-voice",
+            "Add a feature in project",
+            voice_file_id="voice-file",
+            acknowledged=True,
+        )
+    )
     assert first is not None
     assert sent_options[0][2] == "HTML"
     assert "<blockquote>Add a feature in project</blockquote>" in sent_options[0][1]
@@ -220,6 +235,7 @@ async def test_voice_mutation_requires_confirmation(database, jobs, seeded_confi
         assert pending.status == "awaiting_input"
     assert sent_options[0][3] == [[("Confirmar", f"confirm_job:{pending.id}"), ("Cancelar", f"cancel_job:{pending.id}")]]
     assert reactions == [("7", "message-voice", "👀")]
+    assert events[:2] == ["reaction", "response"]
     second = await gateway.handle_callback("callback-confirm", "confirm_job:" + pending.id, user_id="42", chat_id="7", message_id=outbound.message_id)
     assert second is not None
     assert jobs.get(pending.id).status == "queued"
