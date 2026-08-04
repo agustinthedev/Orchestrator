@@ -225,6 +225,21 @@ class JobService:
                 .order_by(PushApproval.created_at.desc())
             )
             if not approval:
+                existing = session.scalar(
+                    select(PushApproval)
+                    .where(
+                        PushApproval.job_id == job_id,
+                        PushApproval.status == "approved",
+                        PushApproval.approved_head_sha == head_sha,
+                    )
+                    .order_by(PushApproval.created_at.desc())
+                )
+                if existing:
+                    if existing.expires_at <= utcnow():
+                        existing.status = "expired"
+                        session.commit()
+                        raise ValueError("Push approval has expired")
+                    return existing
                 raise ValueError("No pending push approval")
             if approval.approved_head_sha != head_sha:
                 raise ValueError("Approval does not match current HEAD")
