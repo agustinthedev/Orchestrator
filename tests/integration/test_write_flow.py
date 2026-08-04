@@ -64,7 +64,11 @@ class CaptureNotifier:
 
 
 class FakeProvider:
+    def __init__(self) -> None:
+        self.title = ""
+
     def create_draft_pull_request(self, *, title, body, head, base, idempotency_key):
+        self.title = title
         return PullRequestResult("42", "https://provider.example/pull/42", True, {"draft": True})
 
 
@@ -130,9 +134,11 @@ async def test_write_job_uses_isolated_worktree_and_stops_before_push(tmp_path, 
     jobs.approve_push(job.id, stored.head_sha, "42", "approval-message")
     jobs.update_context(job.id, {"push_requested": True})
     jobs.transition(job.id, JobStatus.PUSH_APPROVED)
-    engine.provider_for = lambda repository: FakeProvider()
+    provider = FakeProvider()
+    engine.provider_for = lambda repository: provider
     await engine.push(jobs.get(job.id))
     assert jobs.get(job.id).status == "completed"
+    assert provider.title == "feat: add src/change.py"
     assert git(repo_path, "ls-remote", "origin", stored.branch_name).strip()
     with database.session() as session:
         from orchestrator.database.models import PullRequest

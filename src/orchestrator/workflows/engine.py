@@ -355,7 +355,7 @@ class OrchestratorEngine:
             validation_items = list(session.scalars(select(ValidationRun).where(ValidationRun.job_id == job.id).order_by(ValidationRun.created_at)).all())
         body = draft_pr_description(
             summary=f"Resolves `{job.id}`.",
-            problem=job.request_text or "Approved Orchestrator change.",
+            problem=job.request_text or "Approved change.",
             changes=[item.summary or f"{item.change_type} {item.path}" for item in change_items],
             validation=[f"{item.command}: {'passed' if item.passed else 'failed'}" for item in validation_items],
             risk=str(job.context.get("risk", "Review required.")),
@@ -366,7 +366,8 @@ class OrchestratorEngine:
             base_sha=worktree.base_sha,
             head_sha=pushed_head,
         )
-        pr = provider.create_draft_pull_request(title=f"Orchestrator: {job.id}", body=body, head=worktree.branch_name, base=repository.default_branch, idempotency_key=f"pr:{job.id}")
+        pr_title = descriptive_commit_message(job.request_text or "", [item.path for item in change_items])
+        pr = provider.create_draft_pull_request(title=pr_title, body=body, head=worktree.branch_name, base=repository.default_branch, idempotency_key=f"pr:{job.id}")
         if not pr.is_draft:
             raise RuntimeError("Provider returned a non-draft pull request; refusing to continue")
         with self.database.session() as session:
