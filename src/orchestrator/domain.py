@@ -83,7 +83,7 @@ ALLOWED_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
         JobStatus.FAILED,
         JobStatus.NEEDS_REVIEW,
     },
-    JobStatus.PUSH_APPROVED: {JobStatus.PUSHING, JobStatus.CANCELLED, JobStatus.NEEDS_REVIEW},
+    JobStatus.PUSH_APPROVED: {JobStatus.QUEUED, JobStatus.PUSHING, JobStatus.CANCELLED, JobStatus.NEEDS_REVIEW},
     JobStatus.PUSHING: {JobStatus.CREATING_DRAFT_PR, JobStatus.FAILED, JobStatus.NEEDS_REVIEW},
     JobStatus.CREATING_DRAFT_PR: {JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.NEEDS_REVIEW},
     JobStatus.NEEDS_REVIEW: {JobStatus.CANCELLED, JobStatus.QUEUED, JobStatus.FAILED},

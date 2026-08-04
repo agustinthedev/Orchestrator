@@ -29,6 +29,44 @@ async def test_reply_context_resolves_exact_outbound_message(database, jobs, see
 
 
 @pytest.mark.asyncio
+async def test_push_approval_queues_the_push_job(database, jobs, seeded_config, monkeypatch) -> None:
+    monkeypatch.setenv("TELEGRAM_ALLOWED_USER_IDS", "42")
+    monkeypatch.setenv("TELEGRAM_ALLOWED_CHAT_IDS", "7")
+    target = jobs.create_job(kind="implementation", idempotency_key="push-approval-target", project_id="project")
+    for status in (JobStatus.RUNNING, JobStatus.PREPARING_WORKTREE, JobStatus.IMPLEMENTING, JobStatus.VALIDATING, JobStatus.AWAITING_PUSH_APPROVAL):
+        jobs.transition(target.id, status)
+    jobs.create_push_approval(target.id, "head1", "system-pending")
+    approval_message_id = await TelegramGateway(seeded_config, database, jobs).send(
+        "Change ready",
+        chat_id="7",
+        message_type="push_approval",
+        project_id="project",
+        job_id=target.id,
+        head_sha="head1",
+    )
+    gateway = TelegramGateway(
+        seeded_config,
+        database,
+        jobs,
+        classifier=FixedClassifier(Intent.APPROVE_PUSH),
+    )
+
+    response = await gateway.handle(
+        InboundMessage(
+            "push-approval",
+            "7",
+            "42",
+            "approval-message",
+            "Push it",
+            reply_to_message_id=approval_message_id,
+        )
+    )
+
+    assert response is not None
+    assert jobs.get(target.id).status == JobStatus.QUEUED.value
+
+
+@pytest.mark.asyncio
 async def test_diff_question_reply_is_not_treated_as_push_approval(database, jobs, seeded_config, monkeypatch) -> None:
     monkeypatch.setenv("TELEGRAM_ALLOWED_USER_IDS", "42")
     monkeypatch.setenv("TELEGRAM_ALLOWED_CHAT_IDS", "7")
