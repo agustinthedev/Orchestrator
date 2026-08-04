@@ -38,18 +38,18 @@ codex:
   executable: C:/Users/User/AppData/Roaming/npm/codex.cmd
   default_model:
     name: gpt-5.6-luna
-    reasoning_effort: extra_high
+    reasoning_effort: low
   allowed_models:
     - gpt-5.6-luna
   allowed_reasoning_efforts: [low, medium, high, extra_high]
   task_reasoning_effort:
     classification: low
-    global_question: medium
-    project_question: medium
+    global_question: low
+    project_question: low
     daily_code_review: high
     pipeline_review: high
     implementation: extra_high
-    diff_summarization: medium
+    diff_summarization: low
   escalation_enabled: true
   require_user_approval_for_expensive_models: true
   expensive_models: []

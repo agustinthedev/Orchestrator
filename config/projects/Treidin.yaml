@@ -6,7 +6,6 @@ projects:
     codex:
       profile_path: C:/Users/User/.codex
       model_override: gpt-5.6-luna
-      reasoning_effort_override: extra_high
       enabled: true
     scope:
       allowed_read_paths: [.] 
