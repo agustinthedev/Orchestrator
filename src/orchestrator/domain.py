@@ -198,6 +198,32 @@ def descriptive_branch_label(value: str) -> str:
     return "requested-change"
 
 
+def descriptive_commit_message(request: str, changed_paths: Iterable[str]) -> str:
+    """Build a user-facing commit subject from the request and actual paths."""
+    paths = [normalize_relative_path(path) for path in changed_paths if path]
+    lower_request = request.casefold()
+    if any(path.casefold().endswith("readme.md") for path in paths) or "readme" in lower_request:
+        return "docs: update README documentation"
+    if re.search(r"\b(refactor|restructure|clean up)\b", lower_request):
+        prefix, verb = "refactor", "restructure"
+    elif re.search(r"\b(test|tests|coverage|spec)\b", lower_request):
+        prefix, verb = "test", "update"
+    elif re.search(r"\b(fix|bug|error|failure|broken)\b", lower_request):
+        prefix, verb = "fix", "resolve"
+    elif re.search(r"\b(add|implement|introduce|support|feature)\b", lower_request):
+        prefix, verb = "feat", "add"
+    else:
+        prefix, verb = "chore", "update"
+    if len(paths) == 1:
+        scope = paths[0]
+    elif paths:
+        scope = f"{paths[0]} and {len(paths) - 1} more files"
+    else:
+        scope = "requested files"
+    subject = f"{prefix}: {verb} {scope}"
+    return re.sub(r"(?i)\b(orchestrator|codex)\b", "workflow", subject)
+
+
 def normalize_relative_path(path: str) -> str:
     candidate = path.replace("\\", "/").strip()
     candidate = str(PurePosixPath(candidate))

@@ -2,6 +2,7 @@ from orchestrator.domain import (
     Intent,
     classify_intent,
     descriptive_branch_label,
+    descriptive_commit_message,
     paths_are_allowed,
     redact_secrets,
     sanitize_branch_name,
@@ -17,6 +18,13 @@ def test_branch_name_is_safe_and_namespaced() -> None:
 
 def test_descriptive_branch_label_uses_the_requested_file() -> None:
     assert descriptive_branch_label("Hacé los cambios solo en el archivo README") == "update-readme"
+
+
+def test_descriptive_commit_message_uses_the_actual_change() -> None:
+    subject = descriptive_commit_message("Hacé los cambios solo en el archivo README", ["README.md"])
+    assert subject == "docs: update README documentation"
+    assert "orchestrator" not in subject.casefold()
+    assert "codex" not in subject.casefold()
 
 
 def test_scope_enforcement_blocks_forbidden_and_unlisted_paths() -> None:

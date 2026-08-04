@@ -160,7 +160,7 @@ async def test_write_job_finalizes_uncommitted_codex_changes(tmp_path, database,
     stored = jobs.get(job.id)
     assert stored is not None
     assert stored.status == "awaiting_push_approval"
-    assert git(Path(stored.worktree_path), "log", "-1", "--format=%s") == "orchestrator: apply approved change"
+    assert git(Path(stored.worktree_path), "log", "-1", "--format=%s") == "feat: add src/change.py"
     assert git(Path(stored.worktree_path), "status", "--porcelain") == ""
 
 

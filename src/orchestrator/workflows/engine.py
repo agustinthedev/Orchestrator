@@ -22,7 +22,7 @@ from orchestrator.database.models import (
     Worktree,
     utcnow,
 )
-from orchestrator.domain import JobStatus, descriptive_branch_label
+from orchestrator.domain import JobStatus, descriptive_branch_label, descriptive_commit_message
 from orchestrator.git.manager import GitManager
 from orchestrator.jobs.service import JobService
 from orchestrator.observability.logging import get_logger
@@ -264,7 +264,8 @@ class OrchestratorEngine:
         validation_results = await self._validate(job, project, worktree_path)
         if project.validation.required and any(not item.passed and not item.skipped for item in validation_results):
             raise RuntimeError("Required validation failed; push approval was not requested")
-        self.git.commit_worktree(worktree_path, "orchestrator: apply approved change")
+        dirty_paths = self.git.status_changed_files(worktree_path)
+        self.git.commit_worktree(worktree_path, descriptive_commit_message(job.request_text or "", dirty_paths))
         head = self.git.current_head(worktree_path)
         branch_name = worktree.branch_name if hasattr(worktree, "branch_name") else worktree.branch
         commits = self.git.commits_since(worktree_path, worktree.base_sha)
